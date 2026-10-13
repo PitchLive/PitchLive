@@ -1,0 +1,10 @@
+{
+  "description": "Provides real-time football scores, live match streaming, and detailed stats with a sleek dark interface for fans seeking fast, premium sports updates.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
