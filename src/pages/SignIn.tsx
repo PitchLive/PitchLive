@@ -1,6 +1,8 @@
 import { useState } from "react"
 import type { Page } from "../components/Navbar"
 import { photos } from "../imports/photos"
+import googleLogo from '../imports/icons/google.svg'
+import appleLog from '../imports/icons/apple.svg'
 
 export default function SignIn({ go }: { go: (p: Page) => void }) {
   const [mode, setMode] = useState<"in" | "up">("in")
@@ -119,9 +121,13 @@ function SocialBtn({ label, onClick }: { label: string; onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="rounded-xl border border-line bg-ink-2 py-2.5 text-sm font-semibold text-fg hover:border-volt/40"
-    >
-      {label}
+      className="rounded-xl border border-line bg-ink-2 py-2.5 text-sm font-semibold text-fg hover:border-volt/40 "
+    > 
+    {label==="Google"?<img 
+    style={{width:"20px", marginLeft:"72px"}} src="src/imports/icons/google.svg"/>:<img style={{
+      width:"20px",marginLeft:"72px"
+    }} src="src/imports/icons/apple.svg"/>}
+      
     </button>
   )
 }
