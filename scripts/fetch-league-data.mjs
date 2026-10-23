@@ -214,5 +214,29 @@ const body =
   `\nexport const teamDetails: Record<string, TeamDetail> = ${JSON.stringify(details)}\n` +
   `\nexport const leagueTables: Record<string, TableGroup[]> = ${JSON.stringify(outTables)}\n`
 fs.mkdirSync(path.join(ROOT, "src/generated"), { recursive: true })
-fs.writeFileSync(path.join(ROOT, "src/generated/leagueData.ts"), body.replace(/"form":\["/g, '"form":["'))
+fs.writeFileSync(path.join(ROOT, "src/generated/leagueData.ts"), body)
 console.log("written", body.length)
+
+// Same snapshot as plain JSON for the API server's database seed. Every club is
+// included (with its app id and ESPN id) so the server keeps the frontend's ids.
+const snapshot = {
+  generatedAt: new Date().toISOString(),
+  leagues: Object.fromEntries(Object.entries(leagueMeta).map(([k, v]) => [k, { slug: v.slug, season: v.season, logo: v.logo }])),
+  teams: all.map((t) => ({
+    id: t.id,
+    espnId: t.espnId,
+    name: t.name,
+    short: t.short,
+    city: t.city ?? t.location,
+    country: t.country,
+    stadium: t.stadium,
+    league: t.league,
+    color: hex(t.color, "#334155"),
+    color2: hex(t.color2, "#ffffff"),
+    logo: t.logo,
+  })),
+  tables: outTables,
+}
+fs.mkdirSync(path.join(ROOT, "server/data"), { recursive: true })
+fs.writeFileSync(path.join(ROOT, "server/data/snapshot.json"), JSON.stringify(snapshot))
+console.log("snapshot written", snapshot.teams.length, "teams")
