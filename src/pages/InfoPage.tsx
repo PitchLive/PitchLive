@@ -1,4 +1,5 @@
-import { matches, teams } from "../data"
+import { teams } from "../data"
+import { useLive } from "../api/LiveProvider"
 import { Crest, LiveBadge } from "../components/ui"
 import type { Page } from "../components/Navbar"
 
@@ -62,6 +63,7 @@ export default function InfoPage({
   go: (page: Page) => void
   onOpen: (id: string) => void
 }) {
+  const { matches } = useLive()
   if (kind === "fixtures") {
     return (
       <div className="mx-auto max-w-[980px] px-4 py-8 sm:px-6">

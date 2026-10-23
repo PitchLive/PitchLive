@@ -1,8 +1,11 @@
-import { matches, teams } from "../data"
+import { teams } from "../data"
+import { useLive } from "../api/LiveProvider"
 
 export default function ScoreTicker({ onOpen }: { onOpen: (id: string) => void }) {
+  const { matches } = useLive()
   const live = matches.filter((m) => m.status === "LIVE" || m.status === "HT")
   const row = [...live, ...live]
+  if (!live.length) return null
   return (
     <div className="border-b border-line bg-ink-2/80">
       <div className="mx-auto flex max-w-[1400px] items-center">

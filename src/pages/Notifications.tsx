@@ -1,5 +1,6 @@
 import { useState } from "react"
-import { matches, teams } from "../data"
+import { teams } from "../data"
+import { useLive } from "../api/LiveProvider"
 import { Crest } from "../components/ui"
 import type { Page } from "../components/Navbar"
 
@@ -50,6 +51,7 @@ const FILTERS: { key: Kind | "all"; label: string }[] = [
 ]
 
 export default function Notifications({ onOpen }: { onOpen: (id: string) => void; go: (p: Page) => void }) {
+  const { getMatch } = useLive()
   const [notes, setNotes] = useState<Note[]>(SEED)
   const [filter, setFilter] = useState<Kind | "all">("all")
 
@@ -92,7 +94,7 @@ export default function Notifications({ onOpen }: { onOpen: (id: string) => void
         {shown.length === 0 && <p className="py-16 text-center text-sm text-mut">Nothing here yet.</p>}
         {shown.map((n) => {
           const meta = META[n.kind]
-          const clickable = !!(n.match && matches.some((m) => m.id === n.match))
+          const clickable = !!(n.match && getMatch(n.match))
           return (
             <button
               key={n.id}

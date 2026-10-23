@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
-import { matches, teams, type Match } from "../data"
+import { matches as demoMatches, teams, type Match } from "../data"
+import { useLive } from "../api/LiveProvider"
 import { leagueCatalog, tableFor } from "../leagueInfo"
 import { Crest, LeagueLogo, LiveBadge, fmtViewers } from "../components/ui"
 import MatchCard from "../components/MatchCard"
@@ -16,14 +17,16 @@ function liveStats(m: Match) {
   return { poss, shots, sot }
 }
 
-const matchLeagues = leagueCatalog.map((l) => l.name).filter((l) => matches.some((m) => m.league === l))
-
 export default function Home({ onOpen, onLeague }: { onOpen: (id: string) => void; onLeague: (name: string) => void }) {
+  const { matches } = useLive()
+  const matchLeagues = leagueCatalog.map((l) => l.name).filter((l) => matches.some((m) => m.league === l))
   const [league, setLeague] = useState("All")
 
   // Current ongoing matches drive the hero carousel.
   const liveMatches = matches.filter((m) => m.status === "LIVE" || m.status === "HT")
-  const heroMatches = liveMatches.length ? liveMatches : [matches.find((m) => m.featured) ?? matches[0]]
+  const heroMatches = liveMatches.length
+    ? liveMatches
+    : [matches.find((m) => m.status === "UPCOMING") ?? matches[0] ?? demoMatches.find((m) => m.featured) ?? demoMatches[0]!]
   const [heroIdx, setHeroIdx] = useState(0)
   const idx = heroIdx % heroMatches.length
   const feat = heroMatches[idx]

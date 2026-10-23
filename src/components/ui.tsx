@@ -61,6 +61,8 @@ export function LiveBadge({ minute, status }: { minute?: number; status: Match["
   if (status === "FT")
     return <span className="rounded px-1.5 py-0.5 text-[11px] font-semibold tracking-wide bg-line text-mut">FT</span>
   if (status === "UPCOMING") return null
+  if (status === "POSTPONED")
+    return <span className="rounded px-1.5 py-0.5 text-[11px] font-semibold tracking-wide bg-amber/15 text-amber">PPD</span>
   const label = status === "HT" ? "HT" : `${minute}'`
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full bg-live/15 px-2 py-0.5 text-[11px] font-bold text-live">

@@ -10,10 +10,19 @@ import Team from "./pages/Team"
 import SignIn from "./pages/SignIn"
 import Notifications from "./pages/Notifications"
 import InfoPage, { type InfoPageKind } from "./pages/InfoPage"
-import { matches } from "./data"
+import { LiveProvider, useLive } from "./api/LiveProvider"
 import logo from "./imports/Gemini_Generated_Image_gjm08ggjm08ggjm0.png"
 
 export default function App() {
+  return (
+    <LiveProvider>
+      <Shell />
+    </LiveProvider>
+  )
+}
+
+function Shell() {
+  const { matches } = useLive()
   const [page, setPage] = useState<Page>("home")
   const [matchId, setMatchId] = useState<string | null>(null)
   const [teamId, setTeamId] = useState<string | null>(null)
@@ -44,7 +53,7 @@ export default function App() {
     window.scrollTo({ top: 0 })
   }
 
-  const liveMatch = matches.find((m) => m.featured) ?? matches[0]
+  const liveMatch = matches.find((m) => m.featured) ?? matches.find((m) => m.status === "LIVE") ?? matches[0]
 
   return (
     <div className="min-h-screen bg-ink text-fg">
@@ -55,10 +64,10 @@ export default function App() {
         {page === "home" && <Home onOpen={openMatch} onLeague={(l) => openLeague(l || null)} />}
         {page === "scores" && <Scores onOpen={openMatch} onTeam={openTeam} go={go} />}
         {page === "competitions" && <Competitions onTeam={openTeam} league={league} setLeague={openLeague} />}
-        {page === "streaming" && <Streaming onOpen={openMatch} />}
-        {page === "match" && matchId && <MatchDetail id={matchId} onOpen={openMatch} onTeam={openTeam} back={() => go("scores")} />}
+        {page === "streaming" && <Streaming onOpen={openMatch} go={go} />}
+        {page === "match" && matchId && <MatchDetail id={matchId} onTeam={openTeam} go={go} back={() => go("scores")} />}
         {page === "team" && teamId && (
-          <Team id={teamId} onOpen={openMatch} onTeam={openTeam} onLeague={openLeague} back={() => (league ? openLeague(league) : go("scores"))} />
+          <Team id={teamId} onOpen={openMatch} onTeam={openTeam} onLeague={openLeague} onSignIn={() => go("signin")} back={() => (league ? openLeague(league) : go("scores"))} />
         )}
         {page === "signin" && <SignIn go={go} />}
         {page === "notifications" && <Notifications onOpen={openMatch} go={go} />}
@@ -82,7 +91,7 @@ export default function App() {
       </footer>
 
       {/* Floating watch-live button */}
-      {page !== "match" && (
+      {page !== "match" && liveMatch && (
         <button
           onClick={() => openMatch(liveMatch.id)}
           className="fixed bottom-5 right-5 z-40 flex items-center gap-2.5 rounded-full bg-volt px-5 py-3.5 font-bold text-ink shadow-[0_8px_30px_rgba(61,255,136,0.45)] transition-transform hover:scale-105"

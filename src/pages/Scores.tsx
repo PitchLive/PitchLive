@@ -28,7 +28,9 @@ import laLigaLogo from "../imports/logos/la-liga.svg"
 import ligue1Logo from "../imports/logos/ligue-1.svg"
 import serieALogo from "../imports/logos/serie-a.svg"
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { matches, teams, type Match } from "../data"
+import { teams, type Match } from "../data"
+import { useLive } from "../api/LiveProvider"
+import { leagueByName } from "../leagueInfo"
 import { Crest } from "../components/ui"
 import type { Page } from "../components/Navbar"
 import CountryExplorer, { type RemoteLeague } from "../components/CountryExplorer"
@@ -215,7 +217,11 @@ export default function Scores({ onOpen, onTeam, go }: { onOpen: (id: string) =>
   const [dayOffset, setDayOffset] = useState(0)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [favs, setFavs] = useState<Record<string, boolean>>({})
-  const [myTeams, setMyTeams] = useState<string[]>(["ars", "liv"])
+  const { matches, user, favorites, toggleFavorite } = useLive()
+  const myTeams = [...favorites].filter((id) => teams[id])
+  const follow = async (id: string) => {
+    if ((await toggleFavorite(id)) === "signin") go("signin")
+  }
   const [picking, setPicking] = useState(false)
   const [sport, setSport] = useState("Football")
   const [countryQuery, setCountryQuery] = useState("")
@@ -244,9 +250,13 @@ export default function Scores({ onOpen, onTeam, go }: { onOpen: (id: string) =>
   }, [])
 
   const grouped = useMemo(() => {
-    const list = (dayOffset === 0 ? matches : [])
+    const day = new Date()
+    day.setDate(day.getDate() + dayOffset)
+    const sameDay = (iso: string) => new Date(iso).toDateString() === day.toDateString()
+    const list = matches
+      .filter((m) => (m.kickoffAt ? sameDay(m.kickoffAt) : dayOffset === 0))
       .filter((m) => (pinned ? m.league === pinned : true))
-      .filter((m) => (sport === "Favorites" ? favs[m.id] : true))
+      .filter((m) => (sport === "Favorites" ? favs[m.id] || favorites.has(m.home) || favorites.has(m.away) : true))
       .filter((m) => {
         if (filter === "live") return m.status === "LIVE" || m.status === "HT"
         if (filter === "finished") return m.status === "FT"
@@ -259,7 +269,7 @@ export default function Scores({ onOpen, onTeam, go }: { onOpen: (id: string) =>
       map.get(m.league)!.push(m)
     }
     return [...map.entries()]
-  }, [filter, pinned, dayOffset, sport, favs])
+  }, [matches, filter, pinned, dayOffset, sport, favs, favorites])
 
   const liveCount = matches.filter((m) => m.status === "LIVE" || m.status === "HT").length
   const selectedDate = new Date()
@@ -410,7 +420,7 @@ export default function Scores({ onOpen, onTeam, go }: { onOpen: (id: string) =>
                         <span className="truncate">{teams[id].name}</span>
                       </button>
                       <button
-                        onClick={() => setMyTeams((t) => t.filter((x) => x !== id))}
+                        onClick={() => follow(id)}
                         className="grid h-6 w-6 place-items-center rounded text-mut-2 opacity-0 transition-opacity hover:text-live group-hover:opacity-100"
                         aria-label={`Remove ${teams[id].name}`}
                       >
@@ -418,14 +428,19 @@ export default function Scores({ onOpen, onTeam, go }: { onOpen: (id: string) =>
                       </button>
                     </div>
                   ))}
-                  <button
+                  {!user && (
+                    <button onClick={() => go("signin")} className="w-full rounded-lg px-2.5 py-1.5 text-left text-[12px] text-mut hover:bg-panel/60 hover:text-fg">
+                      Sign in to follow clubs
+                    </button>
+                  )}
+                  {user && <button
                     onClick={() => setPicking((v) => !v)}
                     className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12px] font-extrabold uppercase tracking-[0.12em] text-live hover:bg-live/10"
                   >
                     <span className={`grid h-[22px] w-[22px] place-items-center text-lg leading-none transition-transform ${picking ? "rotate-45" : ""}`}>+</span>
                     Add the team
-                  </button>
-                  {picking && (
+                  </button>}
+                  {user && picking && (
                     <div className="mt-1 max-h-56 overflow-y-auto rounded-xl border border-line bg-ink-2 p-1">
                       {Object.values(teams)
                         .filter((t) => !myTeams.includes(t.id))
@@ -433,7 +448,7 @@ export default function Scores({ onOpen, onTeam, go }: { onOpen: (id: string) =>
                         .map((t) => (
                           <button
                             key={t.id}
-                            onClick={() => setMyTeams((m) => [...m, t.id])}
+                            onClick={() => follow(t.id)}
                             className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-[12.5px] text-fg/85 hover:bg-panel hover:text-fg"
                           >
                             <Crest id={t.id} size={20} />
@@ -545,7 +560,8 @@ export default function Scores({ onOpen, onTeam, go }: { onOpen: (id: string) =>
 
           <div className="space-y-3">
             {(sport === "Football" || sport === "Favorites") && grouped.map(([lg, ms]) => {
-              const meta = LEAGUE_META[lg] ?? { flag: "⚽", country: "" }
+              const info = leagueByName[lg]
+              const meta = LEAGUE_META[lg] ?? (info?.logo ? { flag: info.logo, country: info.country.toUpperCase() } : { flag: "⚽", country: "" })
               const isCollapsed = collapsed[lg]
               return (
                 <section key={lg} className="overflow-hidden rounded-2xl border border-line bg-panel/50 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.6)] backdrop-blur-sm">
@@ -590,7 +606,7 @@ export default function Scores({ onOpen, onTeam, go }: { onOpen: (id: string) =>
             {sport !== "Football" && (sport !== "Favorites" || grouped.length === 0) && (
               <div className="grid place-items-center gap-3 rounded-2xl border border-line bg-panel/50 py-16 text-center">
                 <SportIcon src={SPORTS.find((x) => x.name === sport)!.icon} className="h-10 w-10" />
-                <p className="text-mut">{sport === "Favorites" ? "Star a match to see it here." : `${sport} coverage is coming soon.`}</p>
+                <p className="text-mut">{sport === "Favorites" ? "Star a match or follow a club to see it here." : `${sport} coverage is coming soon.`}</p>
               </div>
             )}
             {sport === "Football" && grouped.length === 0 && (

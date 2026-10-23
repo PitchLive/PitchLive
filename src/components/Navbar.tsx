@@ -1,4 +1,5 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import { useLive } from "../api/LiveProvider"
 import { teams } from "../data"
 import { leagueCatalog } from "../leagueInfo"
 import { Crest, LeagueLogo } from "./ui"
@@ -132,9 +133,7 @@ export default function Navbar({
           </span>
         </button>
 
-        <button onClick={() => go("signin")} className="hidden shrink-0 rounded-full bg-volt px-5 py-2.5 text-sm font-bold text-ink transition-shadow hover:shadow-[0_0_20px_rgba(61,255,136,0.5)] sm:block">
-          Sign In
-        </button>
+        <AccountButton go={go} onTeam={onTeam} />
 
         <button onClick={() => setMenu((m) => !m)} className="grid h-9 w-9 place-items-center rounded-lg border border-line text-fg lg:hidden">
           <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
@@ -162,5 +161,84 @@ export default function Navbar({
         </div>
       )}
     </header>
+  )
+}
+
+function AccountButton({ go, onTeam }: { go: (p: Page) => void; onTeam: (id: string) => void }) {
+  const { user, logout, favorites, connected, online } = useLive()
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false)
+    document.addEventListener("mousedown", close)
+    return () => document.removeEventListener("mousedown", close)
+  }, [open])
+
+  if (!user)
+    return (
+      <button
+        onClick={() => go("signin")}
+        className="shrink-0 rounded-full bg-volt px-4 py-2.5 text-sm font-bold text-ink transition-shadow hover:shadow-[0_0_20px_rgba(61,255,136,0.5)] sm:px-5"
+      >
+        Sign In
+      </button>
+    )
+
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-label="Account"
+        aria-expanded={open}
+        className="relative grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-volt to-cobalt font-display text-sm font-black text-ink ring-2 ring-white/10"
+      >
+        {user.displayName.slice(0, 1).toUpperCase()}
+        {online && (
+          <span
+            title={connected ? "Live updates connected" : "Reconnecting…"}
+            className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full ring-2 ring-ink ${connected ? "bg-volt" : "bg-amber"}`}
+          />
+        )}
+      </button>
+      {open && (
+        <div className="absolute right-0 mt-2 w-64 overflow-hidden rounded-2xl border border-white/10 bg-panel/95 shadow-2xl shadow-black/60 backdrop-blur-xl">
+          <div className="border-b border-white/[0.06] px-4 py-3">
+            <div className="truncate text-sm font-bold">{user.displayName}</div>
+            <div className="truncate text-[12px] text-mut">{user.email}</div>
+          </div>
+          <div className="px-2 py-2">
+            <div className="px-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-mut-2">Following</div>
+            {favorites.size === 0 && <p className="px-2 py-1.5 text-[12px] text-mut">Follow clubs from their page.</p>}
+            {[...favorites].slice(0, 6).map((id) =>
+              teams[id] ? (
+                <button
+                  key={id}
+                  onClick={() => {
+                    setOpen(false)
+                    onTeam(id)
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-[13px] hover:bg-white/[0.05]"
+                >
+                  <Crest id={id} size={20} />
+                  <span className="truncate">{teams[id].name}</span>
+                </button>
+              ) : null,
+            )}
+          </div>
+          <button
+            onClick={async () => {
+              setOpen(false)
+              await logout()
+              go("home")
+            }}
+            className="w-full border-t border-white/[0.06] px-4 py-3 text-left text-sm font-semibold text-live hover:bg-live/10"
+          >
+            Sign out
+          </button>
+        </div>
+      )}
+    </div>
   )
 }

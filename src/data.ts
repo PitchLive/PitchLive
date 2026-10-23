@@ -53,9 +53,12 @@ export type Match = {
   away: string
   homeScore: number
   awayScore: number
-  status: "LIVE" | "HT" | "FT" | "UPCOMING"
+  status: "LIVE" | "HT" | "FT" | "UPCOMING" | "POSTPONED"
   minute?: number
-  kickoff?: string
+  kickoff?: string // local "HH:MM"
+  kickoffAt?: string // ISO timestamp (API matches)
+  venue?: string
+  hasStream?: boolean
   homeCards?: number
   awayCards?: number
   subs?: number

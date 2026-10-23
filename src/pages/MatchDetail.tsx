@@ -1,5 +1,7 @@
-import { useState } from "react"
-import { matches, teams, commentary, streams } from "../data"
+import { useEffect, useState } from "react"
+import { teams, commentary, streams } from "../data"
+import { useLive } from "../api/LiveProvider"
+import type { Page } from "../components/Navbar"
 import { Crest, LiveBadge } from "../components/ui"
 import VideoPlayer from "../components/VideoPlayer"
 import LiveChat from "../components/LiveChat"
@@ -18,9 +20,28 @@ const STATS = [
 
 const FORMATION = ["GK", "RB", "CB", "CB", "LB", "CM", "CM", "CAM", "RW", "ST", "LW"]
 
-export default function MatchDetail({ id, onOpen, onTeam, back }: { id: string; onOpen: (id: string) => void; onTeam: (id: string) => void; back: () => void }) {
-  const m = matches.find((x) => x.id === id) ?? matches[0]
+export default function MatchDetail({ id, onTeam, go, back }: { id: string; onTeam: (id: string) => void; go: (p: Page) => void; back: () => void }) {
+  const { getMatch, loadMatch } = useLive()
+  const m = getMatch(id)
   const [tab, setTab] = useState<Tab>("Overview")
+  const [missing, setMissing] = useState(false)
+  const known = !!m
+
+  // Matches outside the loaded days (e.g. from a club page) are fetched on demand.
+  useEffect(() => {
+    if (!known) loadMatch(id).catch(() => setMissing(true))
+  }, [id, known, loadMatch])
+
+  if (!m)
+    return (
+      <div className="mx-auto max-w-[1400px] px-4 py-24 text-center sm:px-6">
+        <p className="text-mut">{missing ? "This match could not be found." : "Loading match…"}</p>
+        <button onClick={back} className="mt-4 text-sm font-semibold text-volt hover:underline">
+          Back to scores
+        </button>
+      </div>
+    )
+
   const stream = streams.find((s) => s.match === m.id)
   const thumb = stream?.thumb ?? "https://images.unsplash.com/photo-1522778119026-d647f0596c20?w=1200&h=675&fit=crop&auto=format"
   const home = teams[m.home]
@@ -53,6 +74,8 @@ export default function MatchDetail({ id, onOpen, onTeam, back }: { id: string; 
               <span className="text-fg">{m.awayScore}</span>
             </div>
             <div className="mt-2 text-[12px] uppercase tracking-widest text-mut">{m.league}</div>
+            {m.status === "UPCOMING" && m.kickoff && <div className="mt-1 font-mono-num text-sm text-fg/80">Kick-off {m.kickoff}</div>}
+            {m.venue && <div className="mt-1 text-[12px] text-mut-2">{m.venue}</div>}
           </div>
           <TeamCol id={m.away} onTeam={onTeam} />
         </div>
@@ -145,7 +168,7 @@ export default function MatchDetail({ id, onOpen, onTeam, back }: { id: string; 
           <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
             <VideoPlayer thumb={thumb} viewers={m.viewers ?? 120000} title={`${home.name} vs ${away.name}`} live={m.status === "LIVE"} />
             <div className="h-[420px] lg:h-auto">
-              <LiveChat />
+              <LiveChat matchId={m.id} onSignIn={() => go("signin")} />
             </div>
           </div>
         )}

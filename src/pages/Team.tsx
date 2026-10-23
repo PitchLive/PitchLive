@@ -1,4 +1,6 @@
-import { matches, teams, type Standing } from "../data"
+import { useEffect } from "react"
+import { teams, type Standing } from "../data"
+import { useLive } from "../api/LiveProvider"
 import { Crest, FormPills, LeagueLogo, LiveBadge } from "../components/ui"
 import { clubsIn, detailsFor, domesticLeague, leagueByName, positionIn } from "../leagueInfo"
 import { photos } from "../imports/photos"
@@ -6,15 +8,22 @@ import { photos } from "../imports/photos"
 const pts = (s: Standing) => s.pts ?? s.w * 3 + s.d
 const gd = (s: Standing) => s.gf - s.ga
 
-export default function Team({ id, onOpen, onTeam, onLeague, back }: {
+export default function Team({ id, onOpen, onTeam, onLeague, onSignIn, back }: {
   id: string
   onOpen: (id: string) => void
   onTeam: (id: string) => void
   onLeague: (name: string) => void
+  onSignIn: () => void
   back: () => void
 }) {
+  const { matches, favorites, toggleFavorite, loadTeamMatches } = useLive()
+  useEffect(() => {
+    loadTeamMatches(id).catch(() => {})
+  }, [id, loadTeamMatches])
+
   const t = teams[id]
   if (!t) return null
+  const following = favorites.has(id)
 
   const details = detailsFor(id)
   const league = domesticLeague(id) ?? t.league
@@ -29,6 +38,9 @@ export default function Team({ id, onOpen, onTeam, onLeague, back }: {
   const leagueMates = league ? clubsIn(league).filter((x) => x !== id) : []
 
   const fixtures = matches.filter((m) => m.home === id || m.away === id)
+  const follow = async () => {
+    if ((await toggleFavorite(id)) === "signin") onSignIn()
+  }
 
   return (
     <div className="mx-auto max-w-[1100px] px-4 py-6 sm:px-6">
@@ -82,8 +94,20 @@ export default function Team({ id, onOpen, onTeam, onLeague, back }: {
               })}
             </div>
           </div>
+          <button
+            onClick={follow}
+            aria-pressed={following}
+            className={`flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-bold transition-all sm:ml-auto ${
+              following ? "border border-volt/50 bg-volt/15 text-volt" : "bg-volt text-ink hover:shadow-[0_0_20px_rgba(61,255,136,0.5)]"
+            }`}
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" fill={following ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
+              <path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z" strokeLinejoin="round" />
+            </svg>
+            {following ? "Following" : "Follow"}
+          </button>
           {position && (
-            <div className="sm:ml-auto flex items-center gap-2 rounded-2xl border border-line bg-ink-2/70 px-5 py-3 text-center">
+            <div className="flex items-center gap-2 rounded-2xl border border-line bg-ink-2/70 px-5 py-3 text-center">
               <div>
                 <div className="font-mono-num text-2xl font-extrabold text-volt">#{position}</div>
                 <div className="text-[11px] uppercase tracking-wider text-mut-2">{info?.short ?? "League"}</div>
