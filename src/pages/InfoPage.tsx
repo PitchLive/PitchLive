@@ -50,7 +50,7 @@ const COPY: Record<Exclude<InfoPageKind, "news" | "fixtures">, { eyebrow: string
 const NEWS = [
   { category: "Matchday", title: "Eight live fixtures headline tonight’s schedule", body: "Follow the biggest games through live scores, commentary, and match centres." },
   { category: "Competitions", title: "Title races tighten across Europe", body: "Review the latest form and standings from every league represented on PitchLive." },
-  { category: "Product", title: "Club search now covers 120 teams", body: "Find clubs across six domestic leagues and open their profile in one click." },
+  { category: "Product", title: "Club search now covers 340+ teams", body: "Find clubs across 18 major competitions — from the Premier League to MLS and the Brasileirão — and open their profile in one click." },
 ]
 
 export default function InfoPage({

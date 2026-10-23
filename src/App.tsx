@@ -17,8 +17,16 @@ export default function App() {
   const [page, setPage] = useState<Page>("home")
   const [matchId, setMatchId] = useState<string | null>(null)
   const [teamId, setTeamId] = useState<string | null>(null)
+  const [league, setLeague] = useState<string | null>(null)
+
+  function openLeague(name: string | null) {
+    setLeague(name)
+    setPage("competitions")
+    window.scrollTo({ top: 0 })
+  }
 
   function go(p: Page) {
+    setLeague(null)
     setPage(p)
     setMatchId(null)
     window.scrollTo({ top: 0 })
@@ -40,16 +48,18 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-ink text-fg">
-      <Navbar page={page} go={go} onTeam={openTeam} />
+      <Navbar page={page} go={go} onTeam={openTeam} onLeague={openLeague} />
       <ScoreTicker onOpen={openMatch} />
 
       <main className="pb-24">
-        {page === "home" && <Home onOpen={openMatch} />}
+        {page === "home" && <Home onOpen={openMatch} onLeague={(l) => openLeague(l || null)} />}
         {page === "scores" && <Scores onOpen={openMatch} onTeam={openTeam} go={go} />}
-        {page === "competitions" && <Competitions onTeam={openTeam} />}
+        {page === "competitions" && <Competitions onTeam={openTeam} league={league} setLeague={openLeague} />}
         {page === "streaming" && <Streaming onOpen={openMatch} />}
         {page === "match" && matchId && <MatchDetail id={matchId} onOpen={openMatch} onTeam={openTeam} back={() => go("scores")} />}
-        {page === "team" && teamId && <Team id={teamId} onOpen={openMatch} onTeam={openTeam} back={() => go("scores")} />}
+        {page === "team" && teamId && (
+          <Team id={teamId} onOpen={openMatch} onTeam={openTeam} onLeague={openLeague} back={() => (league ? openLeague(league) : go("scores"))} />
+        )}
         {page === "signin" && <SignIn go={go} />}
         {page === "notifications" && <Notifications onOpen={openMatch} go={go} />}
         {(["news", "about", "fixtures", "help", "terms", "privacy"] as Page[]).includes(page) && (
@@ -57,11 +67,11 @@ export default function App() {
         )}
       </main>
 
-      <footer className="border-t border-line">
+      <footer className="border-t border-white/[0.06]">
         <div className="mx-auto flex max-w-[1400px] flex-col items-center justify-between gap-4 px-6 py-8 sm:flex-row">
           <img src={logo} alt="PITCHLIVE" className="h-10 w-auto object-contain" />
           <p className="text-[12px] text-mut-2">
-            Demo experience with fictional clubs &amp; simulated scores. Not affiliated with any real competition.
+            Tables &amp; club data: ESPN snapshot. Live match scores are simulated. Not affiliated with any competition.
           </p>
           <div className="flex gap-4 text-[13px] text-mut">
             <button className="hover:text-fg" onClick={() => go("about")}>About</button>

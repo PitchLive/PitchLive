@@ -32,7 +32,8 @@ import acMilanLogo from "./imports/logos/ac-milan.svg"
 import monacoLogo from "./imports/logos/as-monaco.svg"
 import sevillaLogo from "./imports/logos/sevilla.svg"
 import { additionalTeams } from "./additionalTeams"
-import { leagueStandings } from "./leagueStandings"
+import { feedTeams, remoteLogos, leagueTables } from "./generated/leagueData"
+import { leagueCatalog, domesticLeague } from "./leagueInfo"
 
 export type Team = {
   id: string
@@ -99,17 +100,17 @@ export const teams: Record<string, Team> = {
   mon: { id: "mon", name: "AS Monaco", short: "ASM", city: "Monaco", color: "#E51B22", color2: "#ffffff", logo: monacoLogo },
   nas: { id: "nas", name: "Al Nassr", short: "NAS", city: "Riyadh", league: "Saudi Pro League", color: "#F9E547", color2: "#2451A4", logo: alNassrLogo },
   ...Object.fromEntries(additionalTeams.map((team) => [team.id, team])),
+  ...Object.fromEntries(feedTeams.map((team) => [team.id, team])),
 }
 
-export const leagues = [
-  "Premier League",
-  "La Liga",
-  "Serie A",
-  "Bundesliga",
-  "Ligue 1",
-  "EFL Championship",
-  "UEFA Champions League",
-]
+// Tag every club with the domestic league it plays in this season, and fill
+// missing artwork with the published club crest.
+for (const t of Object.values(teams)) {
+  t.league = domesticLeague(t.id) ?? t.league
+  if (!t.logo && remoteLogos[t.id]) t.logo = remoteLogos[t.id]
+}
+
+export const leagues = leagueCatalog.map((l) => l.name)
 
 export const matches: Match[] = [
   { id: "m1", league: "UEFA Champions League", home: "ars", away: "rma", homeScore: 2, awayScore: 1, status: "LIVE", minute: 67, homeCards: 1, awayCards: 2, subs: 4, viewers: 1842030, featured: true },
@@ -164,6 +165,11 @@ export type Standing = {
   pts?: number
   form: ("W" | "D" | "L")[]
 }
+
+// Flattened single-table view per competition (MLS conferences etc. are concatenated).
+export const leagueStandings: Record<string, Standing[]> = Object.fromEntries(
+  Object.entries(leagueTables).map(([k, groups]) => [k, groups.flatMap((g) => g.rows)]),
+)
 
 export const standings: Standing[] = leagueStandings["Premier League"]
 

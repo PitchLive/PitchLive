@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
-import { matches, leagues, teams, type Match } from "../data"
-import { Crest, LiveBadge, fmtViewers } from "../components/ui"
+import { matches, teams, type Match } from "../data"
+import { leagueCatalog, tableFor } from "../leagueInfo"
+import { Crest, LeagueLogo, LiveBadge, fmtViewers } from "../components/ui"
 import MatchCard from "../components/MatchCard"
 import LeagueFilters from "../components/LeagueFilters"
 import BackgroundSlider from "../components/BackgroundSlider"
@@ -15,7 +16,9 @@ function liveStats(m: Match) {
   return { poss, shots, sot }
 }
 
-export default function Home({ onOpen }: { onOpen: (id: string) => void }) {
+const matchLeagues = leagueCatalog.map((l) => l.name).filter((l) => matches.some((m) => m.league === l))
+
+export default function Home({ onOpen, onLeague }: { onOpen: (id: string) => void; onLeague: (name: string) => void }) {
   const [league, setLeague] = useState("All")
 
   // Current ongoing matches drive the hero carousel.
@@ -40,7 +43,7 @@ export default function Home({ onOpen }: { onOpen: (id: string) => void }) {
   return (
     <div className="mx-auto max-w-[1400px] px-4 py-6 sm:px-6">
       {/* Hero */}
-      <section className="relative overflow-hidden rounded-3xl border border-line bg-panel">
+      <section className="relative overflow-hidden rounded-3xl border border-white/[0.07] bg-panel shadow-2xl shadow-black/40">
         <div className="absolute inset-0 opacity-55">
           <BackgroundSlider
             images={[photos.scorerRun, photos.aerialDuel, photos.teamHighFive, photos.goalCelebration]}
@@ -176,7 +179,7 @@ export default function Home({ onOpen }: { onOpen: (id: string) => void }) {
           <p className="text-sm text-mut">Live &amp; upcoming across every competition</p>
         </div>
       </div>
-      <LeagueFilters leagues={leagues} active={league} onChange={setLeague} />
+      <LeagueFilters leagues={matchLeagues} active={league} onChange={setLeague} />
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {list.map((m, i) => (
@@ -184,6 +187,45 @@ export default function Home({ onOpen }: { onOpen: (id: string) => void }) {
             <MatchCard match={m} onOpen={onOpen} />
           </div>
         ))}
+      </div>
+
+      {/* Top leagues */}
+      <div className="mt-10 mb-4 flex items-end justify-between gap-4">
+        <div>
+          <h2 className="font-display text-2xl font-extrabold tracking-tight">Leagues &amp; Leaders</h2>
+          <p className="text-sm text-mut">Who sits on top across {leagueCatalog.length} competitions right now</p>
+        </div>
+        <button onClick={() => onLeague("")} className="shrink-0 text-sm font-semibold text-volt hover:underline">
+          All competitions →
+        </button>
+      </div>
+      <div className="no-scrollbar -mx-1 flex gap-3 overflow-x-auto px-1 pb-2">
+        {leagueCatalog.map((l) => {
+          const leader = tableFor(l.name)[0]?.rows[0]
+          return (
+            <button
+              key={l.name}
+              onClick={() => onLeague(l.name)}
+              className="card card-hover relative w-56 shrink-0 overflow-hidden rounded-2xl p-4 text-left"
+            >
+              <span className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full opacity-30 blur-2xl" style={{ background: l.accent }} />
+              <div className="relative flex items-center gap-3">
+                <LeagueLogo src={l.logo} accent={l.accent} size={40} label={l.short} />
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-bold">{l.name}</div>
+                  <div className="truncate text-[11px] text-mut">{l.country}</div>
+                </div>
+              </div>
+              {leader && (
+                <div className="relative mt-4 flex items-center gap-2 rounded-xl bg-white/[0.04] px-2.5 py-2">
+                  <Crest id={leader.team} size={20} />
+                  <span className="min-w-0 flex-1 truncate text-[12px] font-semibold">{teams[leader.team]?.name}</span>
+                  <span className="font-mono-num text-[12px] font-bold text-volt">{leader.pts}</span>
+                </div>
+              )}
+            </button>
+          )
+        })}
       </div>
 
       {/* Streaming CTA band */}

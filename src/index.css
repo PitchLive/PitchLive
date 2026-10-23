@@ -6,15 +6,15 @@
   --font-sans: 'Inter', system-ui, sans-serif;
   --font-mono: 'Geist Mono', ui-monospace, monospace;
 
-  --color-ink: #0d0e14;
-  --color-ink-2: #12131c;
-  --color-panel: #171826;
-  --color-panel-2: #1d1f30;
-  --color-line: #262838;
-  --color-line-soft: #1e2030;
-  --color-mut: #8a8fa3;
-  --color-mut-2: #5a5f74;
-  --color-fg: #eef0f7;
+  --color-ink: #07080d;
+  --color-ink-2: #0d0f17;
+  --color-panel: #12141f;
+  --color-panel-2: #1a1d2b;
+  --color-line: #232636;
+  --color-line-soft: #191b28;
+  --color-mut: #9298ad;
+  --color-mut-2: #5f6579;
+  --color-fg: #f2f4fa;
 
   --color-volt: #3dff88;
   --color-volt-dim: #26c469;
@@ -26,12 +26,19 @@
 @layer base {
   html {
     background: var(--color-ink);
+    color-scheme: dark;
     color: var(--color-fg);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
   }
   body {
     margin: 0;
+    min-height: 100vh;
+    background:
+      radial-gradient(1200px 600px at 85% -10%, color-mix(in srgb, var(--color-cobalt) 14%, transparent), transparent 60%),
+      radial-gradient(900px 500px at -10% 10%, color-mix(in srgb, var(--color-volt) 8%, transparent), transparent 60%),
+      var(--color-ink);
+    background-attachment: fixed;
   }
   ::selection {
     background: color-mix(in srgb, var(--color-volt) 35%, transparent);
@@ -58,6 +65,25 @@
   .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
+  }
+  .card {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--color-panel-2) 70%, transparent), color-mix(in srgb, var(--color-panel) 85%, transparent));
+    border: 1px solid color-mix(in srgb, white 7%, transparent);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, white 5%, transparent), 0 10px 30px -12px rgba(0, 0, 0, 0.6);
+  }
+  .card-hover {
+    transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.2s, box-shadow 0.25s;
+  }
+  .card-hover:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--color-volt) 35%, transparent);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, white 6%, transparent), 0 18px 40px -14px rgba(0, 0, 0, 0.75);
+  }
+  .text-gradient {
+    background: linear-gradient(90deg, var(--color-fg), color-mix(in srgb, var(--color-volt) 70%, var(--color-fg)));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
   .text-glow {
     text-shadow: 0 0 24px color-mix(in srgb, var(--color-volt) 55%, transparent);

@@ -10,7 +10,7 @@ export default function MatchCard({ match, onOpen }: { match: Match; onOpen: (id
   return (
     <button
       onClick={() => onOpen(match.id)}
-      className="group relative w-full overflow-hidden rounded-2xl border border-line-soft bg-panel/60 p-4 text-left transition-all hover:border-volt/40 hover:bg-panel"
+      className="card card-hover group relative w-full overflow-hidden rounded-2xl p-4 text-left"
     >
       {isLive && (
         <span className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-live/70 to-transparent" />
@@ -38,7 +38,7 @@ export default function MatchCard({ match, onOpen }: { match: Match; onOpen: (id
         <TeamRow id={match.away} name={away.name} score={match.awayScore} show={!upcoming} lead={match.awayScore > match.homeScore && !upcoming} />
       </div>
 
-      <div className="mt-3 flex items-center justify-between border-t border-line-soft pt-2.5">
+      <div className="mt-3 flex items-center justify-between border-t border-white/[0.06] pt-2.5">
         <span className="text-[11px] font-medium uppercase tracking-wider text-mut-2">{match.league}</span>
         <div className="flex items-center gap-3">
           <StatChip kind="card" value={(match.homeCards ?? 0) + (match.awayCards ?? 0)} tone="amber" />
