@@ -1,10 +1,13 @@
+import { useState } from "react"
 import { teams, type Match } from "../data"
+import { useClock } from "../api/clock"
 
 export function Crest({ id, size = 40 }: { id: string; size?: number }) {
+  const [broken, setBroken] = useState(false)
   const t = teams[id]
   if (!t) return null
   const r = size / 2
-  if (t.logo) {
+  if (t.logo && !broken) {
     return (
       <span
         className="relative inline-grid shrink-0 place-items-center overflow-hidden"
@@ -16,6 +19,8 @@ export function Crest({ id, size = 40 }: { id: string; size?: number }) {
           alt={`${t.name} crest`}
           width={size}
           height={size}
+          loading="lazy"
+          onError={() => setBroken(true)}
           className="block object-contain drop-shadow-[0_2px_3px_rgba(0,0,0,0.45)]"
           style={{ width: size, height: size, maxWidth: size, maxHeight: size }}
         />
@@ -53,51 +58,55 @@ export function Crest({ id, size = 40 }: { id: string; size?: number }) {
   )
 }
 
-export function LiveBadge({ minute, status }: { minute?: number; status: Match["status"] }) {
-  if (status === "FT")
-    return <span className="rounded px-1.5 py-0.5 text-[11px] font-semibold tracking-wide bg-line text-mut">FT</span>
-  if (status === "UPCOMING") return null
-  const label = status === "HT" ? "HT" : `${minute}'`
+export function LiveBadge({ m }: { m: Match }) {
+  if (m.status === "FT") return <span className="rounded px-1.5 py-0.5 text-[11px] font-semibold tracking-wide bg-line text-mut">FT</span>
+  if (m.status === "UPCOMING") return null
+  if (m.status === "POSTPONED")
+    return <span className="rounded px-1.5 py-0.5 text-[11px] font-semibold tracking-wide bg-amber/15 text-amber">PPD</span>
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full bg-live/15 px-2 py-0.5 text-[11px] font-bold text-live">
       <span className="live-dot inline-block h-1.5 w-1.5 rounded-full bg-live" />
-      {label}
+      <LiveClock m={m} />
     </span>
   )
 }
 
-export function QualityBadge({ q }: { q: "HD" | "4K" | "FHD" }) {
+/** The match clock, ticking every second while the match is live. */
+export function LiveClock({ m }: { m: Match }) {
+  return <span className="font-mono-num tabular-nums">{useClock(m)}</span>
+}
+
+export function LeagueLogo({ src, accent, size = 40, label }: { src?: string; accent: string; size?: number; label: string }) {
+  const [broken, setBroken] = useState(false)
   return (
-    <span className="rounded bg-black/60 px-1.5 py-0.5 text-[10px] font-bold tracking-widest text-volt ring-1 ring-volt/40">
-      {q}
+    <span
+      className="grid shrink-0 place-items-center rounded-xl ring-1 ring-white/10"
+      style={{ width: size, height: size, background: `linear-gradient(135deg, ${accent}33, ${accent}0d)` }}
+    >
+      {src && !broken ? (
+        <img src={src} alt="" loading="lazy" onError={() => setBroken(true)} className="h-[68%] w-[68%] object-contain drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]" />
+      ) : (
+        <span className="font-display font-black text-white" style={{ fontSize: size * 0.3 }}>{label}</span>
+      )}
     </span>
   )
 }
 
-export function fmtViewers(n: number) {
-  if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}K`
-  return `${n}`
-}
-
-const icons = {
-  card: (
-    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="currentColor">
-      <rect x="7" y="3" width="10" height="18" rx="1.5" />
-    </svg>
-  ),
-  sub: (
-    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2.2">
-      <path d="M4 8h11l-3-3M20 16H9l3 3" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  ),
-}
-
-export function StatChip({ kind, value, tone = "amber" }: { kind: "card" | "sub"; value: number; tone?: string }) {
-  if (!value) return null
+export function FormPills({ form, size = 20 }: { form: ("W" | "D" | "L")[]; size?: number }) {
+  if (form.length === 0) return <span className="text-mut-2">—</span>
   return (
-    <span className={`inline-flex items-center gap-1 text-[11px] font-mono-num text-mut`}>
-      <span className={tone === "amber" ? "text-amber" : "text-cobalt"}>{icons[kind]}</span>
-      {value}
+    <span className="flex gap-1">
+      {form.map((f, i) => (
+        <span
+          key={i}
+          className={`grid place-items-center rounded-md font-bold ${
+            f === "W" ? "bg-volt/15 text-volt" : f === "D" ? "bg-white/[0.06] text-mut" : "bg-live/15 text-live"
+          }`}
+          style={{ width: size, height: size, fontSize: size * 0.5 }}
+        >
+          {f}
+        </span>
+      ))}
     </span>
   )
 }

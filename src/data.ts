@@ -32,7 +32,8 @@ import acMilanLogo from "./imports/logos/ac-milan.svg"
 import monacoLogo from "./imports/logos/as-monaco.svg"
 import sevillaLogo from "./imports/logos/sevilla.svg"
 import { additionalTeams } from "./additionalTeams"
-import { leagueStandings } from "./leagueStandings"
+import { feedTeams, remoteLogos, leagueTables } from "./generated/leagueData"
+import { leagueCatalog, domesticLeague } from "./leagueInfo"
 
 export type Team = {
   id: string
@@ -52,14 +53,17 @@ export type Match = {
   away: string
   homeScore: number
   awayScore: number
-  status: "LIVE" | "HT" | "FT" | "UPCOMING"
+  status: "LIVE" | "HT" | "FT" | "UPCOMING" | "POSTPONED"
   minute?: number
-  kickoff?: string
-  homeCards?: number
-  awayCards?: number
-  subs?: number
-  viewers?: number
-  featured?: boolean
+  kickoff?: string // local "HH:MM"
+  kickoffAt?: string // ISO timestamp (API matches)
+  venue?: string
+  hasStream?: boolean
+  // Live clock from the API: ESPN reading plus the local time it was valid at.
+  period?: number
+  clockSeconds?: number
+  clockDisplay?: string // "67'", "45'+2'"
+  clockAt?: number // Date.now() at which clockSeconds was current
 }
 
 // Real clubs. Brand colours are used for the generated fallback crest;
@@ -99,59 +103,17 @@ export const teams: Record<string, Team> = {
   mon: { id: "mon", name: "AS Monaco", short: "ASM", city: "Monaco", color: "#E51B22", color2: "#ffffff", logo: monacoLogo },
   nas: { id: "nas", name: "Al Nassr", short: "NAS", city: "Riyadh", league: "Saudi Pro League", color: "#F9E547", color2: "#2451A4", logo: alNassrLogo },
   ...Object.fromEntries(additionalTeams.map((team) => [team.id, team])),
+  ...Object.fromEntries(feedTeams.map((team) => [team.id, team])),
 }
 
-export const leagues = [
-  "Premier League",
-  "La Liga",
-  "Serie A",
-  "Bundesliga",
-  "Ligue 1",
-  "EFL Championship",
-  "UEFA Champions League",
-]
-
-export const matches: Match[] = [
-  { id: "m1", league: "UEFA Champions League", home: "ars", away: "rma", homeScore: 2, awayScore: 1, status: "LIVE", minute: 67, homeCards: 1, awayCards: 2, subs: 4, viewers: 1842030, featured: true },
-  { id: "m2", league: "Premier League", home: "liv", away: "bou", homeScore: 0, awayScore: 0, status: "LIVE", minute: 23, homeCards: 0, awayCards: 1, subs: 0, viewers: 924110 },
-  { id: "m3", league: "Premier League", home: "mci", away: "che", homeScore: 3, awayScore: 2, status: "LIVE", minute: 81, homeCards: 2, awayCards: 3, subs: 5, viewers: 678900 },
-  { id: "m4", league: "Premier League", home: "new", away: "avl", homeScore: 1, awayScore: 1, status: "HT", minute: 45, homeCards: 1, awayCards: 0, subs: 1, viewers: 410220 },
-  { id: "m5", league: "La Liga", home: "bar", away: "sev", homeScore: 2, awayScore: 0, status: "LIVE", minute: 58, homeCards: 0, awayCards: 1, subs: 3, viewers: 1205000 },
-  { id: "m6", league: "La Liga", home: "atm", away: "rma", homeScore: 1, awayScore: 3, status: "LIVE", minute: 72, homeCards: 1, awayCards: 1, subs: 4, viewers: 1883000 },
-  { id: "m7", league: "Serie A", home: "juv", away: "nap", homeScore: 0, awayScore: 0, status: "UPCOMING", kickoff: "20:45", viewers: 0 },
-  { id: "m8", league: "Serie A", home: "int", away: "mil", homeScore: 0, awayScore: 0, status: "UPCOMING", kickoff: "21:00", viewers: 0 },
-  { id: "m9", league: "Bundesliga", home: "bay", away: "bvb", homeScore: 2, awayScore: 2, status: "FT", viewers: 0 },
-  { id: "m11", league: "Premier League", home: "tot", away: "sun", homeScore: 0, awayScore: 0, status: "UPCOMING", kickoff: "17:30", viewers: 0 },
-  { id: "m12", league: "Premier League", home: "nfo", away: "mun", homeScore: 1, awayScore: 0, status: "LIVE", minute: 38, homeCards: 1, awayCards: 1, subs: 0, viewers: 352400 },
-  { id: "m13", league: "EFL Championship", home: "lee", away: "hul", homeScore: 2, awayScore: 1, status: "LIVE", minute: 54, homeCards: 1, awayCards: 2, subs: 2, viewers: 214300 },
-  { id: "m14", league: "EFL Championship", home: "ips", away: "lee", homeScore: 0, awayScore: 0, status: "UPCOMING", kickoff: "19:45", viewers: 0 },
-  { id: "m15", league: "Premier League", home: "ful", away: "eve", homeScore: 1, awayScore: 2, status: "FT", viewers: 0 },
-  { id: "m16", league: "Premier League", home: "cry", away: "bre", homeScore: 0, awayScore: 0, status: "UPCOMING", kickoff: "20:00", viewers: 0 },
-  { id: "m17", league: "EFL Championship", home: "cov", away: "hul", homeScore: 3, awayScore: 1, status: "FT", viewers: 0 },
-  { id: "m10", league: "Ligue 1", home: "psg", away: "mon", homeScore: 1, awayScore: 0, status: "FT", viewers: 0 },
-]
-
-export type StreamCard = {
-  id: string
-  match: string
-  league: string
-  quality: "HD" | "4K" | "FHD"
-  live: boolean
-  viewers: number
-  kickoff?: string
-  thumb: string
+// Tag every club with the domestic league it plays in this season, and fill
+// missing artwork with the published club crest.
+for (const t of Object.values(teams)) {
+  t.league = domesticLeague(t.id) ?? t.league
+  if (!t.logo && remoteLogos[t.id]) t.logo = remoteLogos[t.id]
 }
 
-export const streams: StreamCard[] = [
-  { id: "s1", match: "m1", league: "UEFA Champions League", quality: "4K", live: true, viewers: 1842030, thumb: "https://images.unsplash.com/photo-1522778119026-d647f0596c20?w=800&h=450&fit=crop&auto=format" },
-  { id: "s2", match: "m5", league: "La Liga", quality: "HD", live: true, viewers: 1205000, thumb: "https://images.unsplash.com/photo-1489944440615-453fc2b6a9a9?w=800&h=450&fit=crop&auto=format" },
-  { id: "s3", match: "m3", league: "Premier League", quality: "4K", live: true, viewers: 678900, thumb: "https://images.unsplash.com/photo-1508098682722-e99c43a406b2?w=800&h=450&fit=crop&auto=format" },
-  { id: "s4", match: "m6", league: "La Liga", quality: "FHD", live: true, viewers: 1883000, thumb: "https://images.unsplash.com/photo-1543326727-cf6c39e8f84c?w=800&h=450&fit=crop&auto=format" },
-  { id: "s5", match: "m2", league: "Premier League", quality: "HD", live: true, viewers: 924110, thumb: "https://images.unsplash.com/photo-1459865264687-595d652de67e?w=800&h=450&fit=crop&auto=format" },
-  { id: "s6", match: "m7", league: "Serie A", quality: "4K", live: false, kickoff: "20:45", viewers: 0, thumb: "https://images.unsplash.com/photo-1551958219-acbc608c6377?w=800&h=450&fit=crop&auto=format" },
-  { id: "s7", match: "m8", league: "Serie A", quality: "HD", live: false, kickoff: "21:00", viewers: 0, thumb: "https://images.unsplash.com/photo-1517927033932-b3d18e61fb3a?w=800&h=450&fit=crop&auto=format" },
-  { id: "s8", match: "m4", league: "Premier League", quality: "FHD", live: true, viewers: 410220, thumb: "https://images.unsplash.com/photo-1431324155629-1a6deb1dec8d?w=800&h=450&fit=crop&auto=format" },
-]
+export const leagues = leagueCatalog.map((l) => l.name)
 
 export type Standing = {
   team: string
@@ -165,13 +127,10 @@ export type Standing = {
   form: ("W" | "D" | "L")[]
 }
 
+// Flattened single-table view per competition (MLS conferences etc. are concatenated).
+export const leagueStandings: Record<string, Standing[]> = Object.fromEntries(
+  Object.entries(leagueTables).map(([k, groups]) => [k, groups.flatMap((g) => g.rows)]),
+)
+
 export const standings: Standing[] = leagueStandings["Premier League"]
 
-export const commentary = [
-  { min: "67'", type: "goal", text: "GOAL! The home side restore their lead — a thumping half-volley from the edge of the box after a scrappy corner." },
-  { min: "63'", type: "sub", text: "Substitution for the visitors. Fresh legs up top as they chase the equaliser." },
-  { min: "58'", type: "card", text: "Yellow card shown for a cynical trip on the counter-attack." },
-  { min: "51'", type: "goal", text: "The visitors level it! A composed finish low into the corner after a lovely one-two." },
-  { min: "46'", type: "info", text: "Second half is underway. No changes at the interval." },
-  { min: "34'", type: "goal", text: "GOAL! The home side break the deadlock with a towering header from the set piece." },
-]

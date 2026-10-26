@@ -1,0 +1,25 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "pitchlive",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "port": 8443
+    },
+    {
+      "name": "pitchlive-api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "../pitchlive-backend",
+        "run",
+        "dev"
+      ],
+      "port": 8787
+    }
+  ]
+}

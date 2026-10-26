@@ -33,8 +33,13 @@ export default defineConfig(({ mode }) => {
       host: process.env.FIGMA_DEV_SERVER_HOST || '0.0.0.0',
       port: parseInt(process.env.PORT || '8443'),
       strictPort: true,
+      // Local API server (see server/README.md). Same-origin /api keeps session cookies first-party.
+      proxy: {
+        '/api': { target: process.env.API_URL || 'http://localhost:8787', changeOrigin: false, ws: true },
+      },
       watch: {
         ignored: [
+          '**/server/**',
           '**/.figma/**',
 ],
       },

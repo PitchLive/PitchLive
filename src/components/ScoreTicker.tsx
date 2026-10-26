@@ -1,13 +1,17 @@
-import { matches, teams } from "../data"
+import { teams } from "../data"
+import { useLive } from "../api/LiveProvider"
+import { LiveClock } from "./ui"
 
 export default function ScoreTicker({ onOpen }: { onOpen: (id: string) => void }) {
+  const { matches } = useLive()
   const live = matches.filter((m) => m.status === "LIVE" || m.status === "HT")
+  if (!live.length) return null
   const row = [...live, ...live]
   return (
     <div className="border-b border-line bg-ink-2/80">
       <div className="mx-auto flex max-w-[1400px] items-center">
         <span className="flex shrink-0 items-center gap-1.5 border-r border-line px-4 py-2 text-[11px] font-bold uppercase tracking-widest text-live">
-          <span className="live-dot inline-block h-1.5 w-1.5 rounded-full bg-live" /> Live
+          <span className="live-dot inline-block h-1.5 w-1.5 rounded-full bg-live" /> Live · {live.length}
         </span>
         <div className="overflow-hidden">
           <div className="ticker-track flex w-max">
@@ -17,12 +21,14 @@ export default function ScoreTicker({ onOpen }: { onOpen: (id: string) => void }
                 onClick={() => onOpen(m.id)}
                 className="flex shrink-0 items-center gap-2 border-r border-line/60 px-4 py-2 text-[13px] hover:bg-panel/60"
               >
-                <span className="font-semibold text-fg/80">{teams[m.home].short}</span>
+                <span className="font-semibold text-fg/80">{teams[m.home]?.short}</span>
                 <span className="font-mono-num font-bold text-volt">
                   {m.homeScore}–{m.awayScore}
                 </span>
-                <span className="font-semibold text-fg/80">{teams[m.away].short}</span>
-                <span className="font-mono-num text-[11px] text-live">{m.status === "HT" ? "HT" : `${m.minute}'`}</span>
+                <span className="font-semibold text-fg/80">{teams[m.away]?.short}</span>
+                <span className="text-[11px] text-live">
+                  <LiveClock m={m} />
+                </span>
               </button>
             ))}
           </div>
