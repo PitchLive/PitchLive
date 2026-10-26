@@ -8,6 +8,10 @@ export type ApiMatch = {
   leagueId: string | null
   status: "UPCOMING" | "LIVE" | "HT" | "FT" | "POSTPONED"
   minute: number | null
+  period: number | null
+  clockSeconds: number | null
+  clockDisplay: string | null
+  clockAgeMs: number
   kickoff: string
   venue: string | null
   homeScore: number

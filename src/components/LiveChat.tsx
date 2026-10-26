@@ -7,11 +7,12 @@ const colorFor = (id: string) => COLORS[[...id].reduce((a, c) => a + c.charCodeA
 
 type Line = { key: string; name: string; color: string; text: string; mine?: boolean }
 
-/** Live chat for one match. Falls back to a simulated demo feed when the API isn't available. */
+/** Live chat for one match. */
 export default function LiveChat({ matchId, onSignIn }: { matchId?: string; onSignIn?: () => void }) {
   const { online } = useLive()
   if (online && matchId) return <RealChat key={matchId} matchId={matchId} onSignIn={onSignIn} />
-  return <DemoChat />
+  const reason = online === false ? "Chat is unavailable right now." : online === null ? "Connecting…" : "Pick a match to join its chat."
+  return <ChatFrame status="" lines={[]} empty={reason} notice={null} footer={null} />
 }
 
 function RealChat({ matchId, onSignIn }: { matchId: string; onSignIn?: () => void }) {
@@ -78,38 +79,6 @@ function RealChat({ matchId, onSignIn }: { matchId: string; onSignIn?: () => voi
   )
 }
 
-const SEED = [
-  { u: "harrier_hank", c: "#3dff88", t: "WHAT A STRIKE 🔥🔥" },
-  { u: "galaxy_gal", c: "#8b5cf6", t: "ref is having a shocker tbh" },
-  { u: "midfield_maestro", c: "#3d7bff", t: "that back four is all over the place" },
-  { u: "cornerflag", c: "#ffb020", t: "2-1 called it at half time" },
-]
-
-const POOL = ["GOOOOAL 🎉", "unbelievable save", "how was that not a card??", "this is the game of the season", "keeper needs to come off his line", "counter attack incoming"]
-
-function DemoChat() {
-  const [msgs, setMsgs] = useState<Line[]>(SEED.map((s, i) => ({ key: `s${i}`, name: s.u, color: s.c, text: s.t })))
-  const [val, setVal] = useState("")
-
-  useEffect(() => {
-    let n = 0
-    const id = setInterval(() => {
-      const s = SEED[Math.floor(Math.random() * SEED.length)]!
-      setMsgs((m) => [...m.slice(-30), { key: `d${n++}`, name: s.u, color: s.c, text: POOL[Math.floor(Math.random() * POOL.length)]! }])
-    }, 2600)
-    return () => clearInterval(id)
-  }, [])
-
-  function send(e: React.FormEvent) {
-    e.preventDefault()
-    if (!val.trim()) return
-    setMsgs((m) => [...m.slice(-30), { key: `me${Date.now()}`, name: "you", color: "#eef0f7", text: val.trim(), mine: true }])
-    setVal("")
-  }
-
-  return <ChatFrame status="Demo" lines={msgs} empty="" notice={null} footer={<ChatInput value={val} onChange={setVal} onSubmit={send} />} />
-}
-
 function ChatFrame({ status, lines, empty, notice, footer }: { status: string; lines: Line[]; empty: string; notice: string | null; footer: React.ReactNode }) {
   const boxRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -137,7 +106,7 @@ function ChatFrame({ status, lines, empty, notice, footer }: { status: string; l
         ))}
       </div>
       {notice && <p className="border-t border-white/[0.06] bg-amber/10 px-4 py-1.5 text-[12px] text-amber">{notice}</p>}
-      <div className="border-t border-white/[0.06] p-3">{footer}</div>
+      {footer && <div className="border-t border-white/[0.06] p-3">{footer}</div>}
     </div>
   )
 }

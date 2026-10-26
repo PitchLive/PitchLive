@@ -15,7 +15,7 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": [
         "--prefix",
-        "server",
+        "../pitchlive-backend",
         "run",
         "dev"
       ],

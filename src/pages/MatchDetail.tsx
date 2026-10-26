@@ -1,29 +1,14 @@
 import { useEffect, useState } from "react"
-import { teams, commentary, streams } from "../data"
+import { teams } from "../data"
 import { useLive } from "../api/LiveProvider"
 import type { Page } from "../components/Navbar"
-import { Crest, LiveBadge } from "../components/ui"
-import VideoPlayer from "../components/VideoPlayer"
+import { Crest, LeagueLogo, LiveBadge } from "../components/ui"
 import LiveChat from "../components/LiveChat"
-
-const TABS = ["Overview", "Lineups", "Stats", "Commentary", "Stream"] as const
-type Tab = (typeof TABS)[number]
-
-const STATS = [
-  { label: "Possession", h: 58, a: 42, pct: true },
-  { label: "Shots", h: 14, a: 9 },
-  { label: "Shots on Target", h: 6, a: 3 },
-  { label: "Corners", h: 7, a: 4 },
-  { label: "Fouls", h: 8, a: 12 },
-  { label: "Pass Accuracy", h: 87, a: 79, pct: true },
-]
-
-const FORMATION = ["GK", "RB", "CB", "CB", "LB", "CM", "CM", "CAM", "RW", "ST", "LW"]
+import { leagueByName, positionIn } from "../leagueInfo"
 
 export default function MatchDetail({ id, onTeam, go, back }: { id: string; onTeam: (id: string) => void; go: (p: Page) => void; back: () => void }) {
   const { getMatch, loadMatch } = useLive()
   const m = getMatch(id)
-  const [tab, setTab] = useState<Tab>("Overview")
   const [missing, setMissing] = useState(false)
   const known = !!m
 
@@ -42,10 +27,11 @@ export default function MatchDetail({ id, onTeam, go, back }: { id: string; onTe
       </div>
     )
 
-  const stream = streams.find((s) => s.match === m.id)
-  const thumb = stream?.thumb ?? "https://images.unsplash.com/photo-1522778119026-d647f0596c20?w=1200&h=675&fit=crop&auto=format"
   const home = teams[m.home]
   const away = teams[m.away]
+  const info = leagueByName[m.league]
+  const kickoff = m.kickoffAt ? new Date(m.kickoffAt) : null
+  const played = m.status !== "UPCOMING" && m.status !== "POSTPONED"
 
   return (
     <div className="mx-auto max-w-[1400px] px-4 py-6 sm:px-6">
@@ -56,124 +42,97 @@ export default function MatchDetail({ id, onTeam, go, back }: { id: string; onTe
         Back
       </button>
 
-      {/* Scoreboard header */}
-      <section className="relative overflow-hidden rounded-3xl border border-line bg-panel">
+      {/* Scoreboard */}
+      <section className="card relative overflow-hidden rounded-3xl">
         <div
-          className="absolute inset-0 opacity-20"
-          style={{ background: `radial-gradient(circle at 20% 0%, ${home.color}55, transparent 55%), radial-gradient(circle at 80% 100%, ${away.color}55, transparent 55%)` }}
+          className="absolute inset-0 opacity-25"
+          style={{ background: `radial-gradient(circle at 20% 0%, ${home?.color}55, transparent 55%), radial-gradient(circle at 80% 100%, ${away?.color}55, transparent 55%)` }}
         />
         <div className="relative grid grid-cols-3 items-center gap-3 p-6 sm:p-10">
           <TeamCol id={m.home} onTeam={onTeam} />
           <div className="text-center">
-            <div className="mb-2 flex justify-center">
-              <LiveBadge minute={m.minute} status={m.status} />
+            <div className="mb-2 flex h-6 justify-center">
+              <LiveBadge m={m} />
             </div>
-            <div className="font-mono-num text-5xl font-extrabold leading-none sm:text-7xl">
-              <span className="text-volt text-glow">{m.homeScore}</span>
-              <span className="mx-2 text-mut-2">:</span>
-              <span className="text-fg">{m.awayScore}</span>
-            </div>
-            <div className="mt-2 text-[12px] uppercase tracking-widest text-mut">{m.league}</div>
-            {m.status === "UPCOMING" && m.kickoff && <div className="mt-1 font-mono-num text-sm text-fg/80">Kick-off {m.kickoff}</div>}
-            {m.venue && <div className="mt-1 text-[12px] text-mut-2">{m.venue}</div>}
+            {played ? (
+              <div className="font-mono-num text-5xl font-extrabold leading-none sm:text-7xl">
+                <span className={m.status === "FT" ? "text-fg" : "text-volt text-glow"}>{m.homeScore}</span>
+                <span className="mx-2 text-mut-2">:</span>
+                <span className="text-fg">{m.awayScore}</span>
+              </div>
+            ) : (
+              <div className="font-mono-num text-4xl font-extrabold leading-none text-fg sm:text-6xl">{m.kickoff}</div>
+            )}
+            <div className="mt-3 text-[12px] uppercase tracking-widest text-mut">{m.league}</div>
           </div>
           <TeamCol id={m.away} onTeam={onTeam} />
         </div>
       </section>
 
-      {/* Tabs */}
-      <div className="no-scrollbar mt-5 flex gap-1 overflow-x-auto border-b border-line">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`relative shrink-0 px-4 py-3 text-sm font-semibold transition-colors ${
-              tab === t ? "text-fg" : "text-mut hover:text-fg"
-            }`}
-          >
-            {t}
-            {tab === t && <span className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-volt" />}
-          </button>
-        ))}
-      </div>
+      <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_380px]">
+        <div className="space-y-4">
+          <section className="card rounded-2xl p-5">
+            <h2 className="mb-3 font-display text-sm font-bold uppercase tracking-wider text-mut">Match info</h2>
+            <dl className="grid gap-3 text-sm sm:grid-cols-2">
+              <Info label="Competition">
+                <button onClick={() => info && go("competitions")} className="flex items-center gap-2 font-semibold hover:text-volt">
+                  {info && <LeagueLogo src={info.logo} accent={info.accent} size={22} label="" />}
+                  {m.league}
+                </button>
+              </Info>
+              <Info label="Kick-off">
+                {kickoff ? kickoff.toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "TBC"}
+              </Info>
+              <Info label="Venue">{m.venue ?? "TBC"}</Info>
+              <Info label="Status">{statusText(m.status)}</Info>
+            </dl>
+          </section>
 
-      <div className="mt-6">
-        {tab === "Overview" && (
-          <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
-            <div className="space-y-4">
-              <VideoPlayer thumb={thumb} viewers={m.viewers ?? 120000} title={`${home.name} vs ${away.name}`} live={m.status === "LIVE"} />
-              <div className="grid gap-3 sm:grid-cols-2">
-                {commentary.slice(0, 4).map((c, i) => (
-                  <CommentaryRow key={i} {...c} />
-                ))}
-              </div>
-            </div>
-            <div className="space-y-3 rounded-2xl border border-line bg-panel p-5">
-              <h3 className="font-display text-sm font-bold uppercase tracking-wider text-mut">Key Stats</h3>
-              {STATS.slice(0, 4).map((s) => (
-                <StatBar key={s.label} {...s} hColor={home.color} aColor={away.color} />
-              ))}
-            </div>
-          </div>
-        )}
+          {info && <TableSnippet league={m.league} ids={[m.home, m.away]} onTeam={onTeam} />}
+        </div>
 
-        {tab === "Lineups" && (
-          <div className="grid gap-6 md:grid-cols-2">
-            {[m.home, m.away].map((tid) => (
-              <div key={tid} className="rounded-2xl border border-line bg-panel p-5">
-                <div className="mb-4 flex items-center gap-2.5">
-                  <Crest id={tid} size={32} />
-                  <span className="font-bold">{teams[tid].name}</span>
-                  <span className="ml-auto rounded bg-line px-2 py-0.5 text-[11px] font-semibold text-mut">4-3-3</span>
-                </div>
-                <ul className="space-y-1">
-                  {FORMATION.map((pos, i) => (
-                    <li key={i} className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-panel-2">
-                      <span className="grid h-6 w-6 place-items-center rounded-md bg-ink-2 font-mono-num text-[11px] font-bold text-volt">
-                        {i + 1}
-                      </span>
-                      <span className="w-9 text-[11px] font-semibold text-mut-2">{pos}</span>
-                      <span className="text-sm text-fg">
-                        {teams[tid].city} Player {i + 1}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {tab === "Stats" && (
-          <div className="mx-auto max-w-2xl space-y-4 rounded-2xl border border-line bg-panel p-6">
-            <div className="mb-2 flex justify-between text-sm font-bold">
-              <span style={{ color: home.color }}>{home.short}</span>
-              <span style={{ color: away.color }}>{away.short}</span>
-            </div>
-            {STATS.map((s) => (
-              <StatBar key={s.label} {...s} hColor={home.color} aColor={away.color} />
-            ))}
-          </div>
-        )}
-
-        {tab === "Commentary" && (
-          <div className="mx-auto max-w-2xl space-y-3">
-            {commentary.map((c, i) => (
-              <CommentaryRow key={i} {...c} />
-            ))}
-          </div>
-        )}
-
-        {tab === "Stream" && (
-          <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
-            <VideoPlayer thumb={thumb} viewers={m.viewers ?? 120000} title={`${home.name} vs ${away.name}`} live={m.status === "LIVE"} />
-            <div className="h-[420px] lg:h-auto">
-              <LiveChat matchId={m.id} onSignIn={() => go("signin")} />
-            </div>
-          </div>
-        )}
+        <div className="h-[460px] lg:h-[560px]">
+          <LiveChat matchId={m.id} onSignIn={() => go("signin")} />
+        </div>
       </div>
     </div>
+  )
+}
+
+const statusText = (s: string) => ({ LIVE: "In play", HT: "Half-time", FT: "Full-time", UPCOMING: "Scheduled", POSTPONED: "Postponed" })[s] ?? s
+
+function Info({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl bg-white/[0.03] px-4 py-3">
+      <dt className="text-[10px] font-bold uppercase tracking-widest text-mut-2">{label}</dt>
+      <dd className="mt-1 text-fg">{children}</dd>
+    </div>
+  )
+}
+
+/** Where the two clubs sit in the competition table. */
+function TableSnippet({ league, ids, onTeam }: { league: string; ids: string[]; onTeam: (id: string) => void }) {
+  const rows = ids.map((id) => ({ id, p: positionIn(league, id) })).filter((r) => r.p)
+  if (!rows.length) return null
+  return (
+    <section className="card rounded-2xl p-5">
+      <h2 className="mb-3 font-display text-sm font-bold uppercase tracking-wider text-mut">League position</h2>
+      <ul className="space-y-1.5">
+        {rows.map(({ id, p }) => (
+          <li key={id}>
+            <button onClick={() => onTeam(id)} className="flex w-full items-center gap-3 rounded-xl bg-white/[0.03] px-3 py-2.5 text-left hover:bg-white/[0.06]">
+              <span className="w-6 font-mono-num text-sm font-bold text-volt">{p!.pos}</span>
+              <Crest id={id} size={24} />
+              <span className="min-w-0 flex-1 truncate text-sm font-semibold">{teams[id]?.name}</span>
+              <span className="font-mono-num text-[12px] text-mut">
+                {p!.row.w}-{p!.row.d}-{p!.row.l}
+              </span>
+              <span className="w-8 text-right font-mono-num text-sm font-bold">{p!.row.pts}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 
@@ -181,40 +140,7 @@ function TeamCol({ id, onTeam }: { id: string; onTeam: (id: string) => void }) {
   return (
     <button onClick={() => onTeam(id)} className="flex flex-col items-center gap-3 text-center hover:text-volt">
       <Crest id={id} size={72} />
-      <span className="font-display text-lg font-bold leading-tight sm:text-2xl">{teams[id].name}</span>
+      <span className="font-display text-lg font-bold leading-tight sm:text-2xl">{teams[id]?.name ?? id}</span>
     </button>
-  )
-}
-
-function StatBar({ label, h, a, pct, hColor, aColor }: { label: string; h: number; a: number; pct?: boolean; hColor: string; aColor: string }) {
-  const total = h + a || 1
-  const hp = pct ? h : (h / total) * 100
-  return (
-    <div>
-      <div className="mb-1 flex justify-between text-[13px] font-mono-num">
-        <span className="font-bold text-fg">{h}{pct ? "%" : ""}</span>
-        <span className="text-mut">{label}</span>
-        <span className="font-bold text-fg">{a}{pct ? "%" : ""}</span>
-      </div>
-      <div className="flex h-1.5 gap-0.5 overflow-hidden rounded-full">
-        <div className="h-full rounded-l-full" style={{ width: `${hp}%`, background: hColor }} />
-        <div className="h-full flex-1 rounded-r-full" style={{ background: aColor, opacity: 0.5 }} />
-      </div>
-    </div>
-  )
-}
-
-function CommentaryRow({ min, type, text }: { min: string; type: string; text: string }) {
-  const dot =
-    type === "goal" ? "bg-volt text-ink" : type === "card" ? "bg-amber text-ink" : type === "sub" ? "bg-cobalt text-white" : "bg-line text-mut"
-  const icon = type === "goal" ? "⚽" : type === "card" ? "▮" : type === "sub" ? "⇄" : "•"
-  return (
-    <div className="flex gap-3 rounded-xl border border-line-soft bg-panel/60 p-3">
-      <div className="flex flex-col items-center gap-1">
-        <span className="font-mono-num text-[12px] font-bold text-mut">{min}</span>
-        <span className={`grid h-6 w-6 place-items-center rounded-full text-[11px] font-bold ${dot}`}>{icon}</span>
-      </div>
-      <p className={`text-[13px] leading-relaxed ${type === "goal" ? "font-semibold text-fg" : "text-fg/80"}`}>{text}</p>
-    </div>
   )
 }

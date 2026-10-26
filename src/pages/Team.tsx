@@ -169,7 +169,7 @@ export default function Team({ id, onOpen, onTeam, onLeague, onSignIn, back }: {
                     <span className={`font-mono-num text-sm font-bold ${decided ? (forGoals > agGoals ? "text-volt" : forGoals < agGoals ? "text-live" : "text-mut") : "text-fg"}`}>
                       {forGoals}-{agGoals}
                     </span>
-                    <LiveBadge minute={m.minute} status={m.status} />
+                    <LiveBadge m={m} />
                   </span>
                 )}
               </button>

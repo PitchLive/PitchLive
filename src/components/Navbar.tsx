@@ -10,7 +10,6 @@ const NAV: { key: Page; label: string }[] = [
   { key: "scores", label: "Live Scores" },
   { key: "competitions", label: "Competitions" },
   { key: "streaming", label: "Streaming" },
-  { key: "news", label: "News" },
 ]
 
 export type Page =
@@ -22,7 +21,6 @@ export type Page =
   | "team"
   | "signin"
   | "notifications"
-  | "news"
   | "about"
   | "fixtures"
   | "help"
@@ -40,6 +38,7 @@ export default function Navbar({
   onTeam: (id: string) => void
   onLeague: (name: string) => void
 }) {
+  const { unreadAlerts } = useLive()
   const [q, setQ] = useState("")
   const [open, setOpen] = useState(false)
   const [menu, setMenu] = useState(false)
@@ -128,9 +127,11 @@ export default function Navbar({
             <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" strokeLinecap="round" strokeLinejoin="round" />
             <path d="M13.7 21a2 2 0 0 1-3.4 0" strokeLinecap="round" />
           </svg>
-          <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-live px-1 text-[9px] font-bold text-white">
-            3
-          </span>
+          {unreadAlerts > 0 && (
+            <span className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-live px-1 text-[9px] font-bold text-white">
+              {unreadAlerts > 9 ? "9+" : unreadAlerts}
+            </span>
+          )}
         </button>
 
         <AccountButton go={go} onTeam={onTeam} />
