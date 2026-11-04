@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { usePrefersReducedMotion } from "../api/motion"
 
 // Cross-fading background image slider. Sits behind content (absolute inset-0).
 export default function BackgroundSlider({
@@ -13,12 +14,13 @@ export default function BackgroundSlider({
   showIndicators?: boolean
 }) {
   const [active, setActive] = useState(0)
+  const still = usePrefersReducedMotion()
 
   useEffect(() => {
-    if (images.length <= 1) return
+    if (images.length <= 1 || still) return
     const id = setInterval(() => setActive((i) => (i + 1) % images.length), interval)
     return () => clearInterval(id)
-  }, [images.length, interval])
+  }, [images.length, interval, still])
 
   return (
     <div className="absolute inset-0">

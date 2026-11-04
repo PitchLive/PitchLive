@@ -70,6 +70,14 @@ export function clockLabel(m: Match, at: number): string {
   return `${Math.floor(s / 60)}:${pad(s % 60)}`
 }
 
+const GOAL_FLASH_MS = 20_000
+
+/** The side that just scored, for the first 20 seconds after a goal arrives; otherwise null. */
+export function useGoalFlash(m: Match): "home" | "away" | null {
+  const at = useNow()
+  return m.lastGoalAt && at - m.lastGoalAt < GOAL_FLASH_MS ? (m.lastGoalSide ?? null) : null
+}
+
 /** Hook form: a clock label that updates every second. */
 export function useClock(m: Match) {
   const at = useNow()

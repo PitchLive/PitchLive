@@ -1,19 +1,22 @@
 import { teams, type Match } from "../data"
 import { Crest, LiveBadge } from "./ui"
+import { useGoalFlash } from "../api/clock"
 
 export default function MatchCard({ match, onOpen }: { match: Match; onOpen: (id: string) => void }) {
   const home = teams[match.home]
   const away = teams[match.away]
   const upcoming = match.status === "UPCOMING" || match.status === "POSTPONED"
   const isLive = match.status === "LIVE" || match.status === "HT"
+  const flash = useGoalFlash(match)
 
   return (
-    <button onClick={() => onOpen(match.id)} className="card card-hover group relative w-full overflow-hidden rounded-2xl p-4 text-left">
+    <button onClick={() => onOpen(match.id)} className={`card card-hover group relative w-full overflow-hidden rounded-2xl p-4 text-left ${flash ? "goal-flash" : ""}`}>
       {isLive && <span className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-live/70 to-transparent" />}
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <LiveBadge m={match} />
           {match.status === "UPCOMING" && <span className="font-mono-num text-[13px] font-semibold text-fg">{match.kickoff}</span>}
+          {flash && <span className="text-[11px] font-black tracking-widest text-live">GOAL!</span>}
         </div>
       </div>
 

@@ -1,8 +1,11 @@
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { teams, type Standing } from "../data"
 import { useLive } from "../api/LiveProvider"
-import { Crest, FormPills, LeagueLogo, LiveBadge } from "../components/ui"
-import { clubsIn, detailsFor, domesticLeague, leagueByName, positionIn } from "../leagueInfo"
+import { Crest, FormPills, LeagueLogo, LiveBadge, LiveResultPill, MoveArrow, UpdatedAgo } from "../components/ui"
+import { clubsIn, detailsFor, domesticLeague, leagueByName, registerLeague } from "../leagueInfo"
+import { api } from "../api/client"
+import { useLeagueTable } from "../api/useLeagueTable"
+import { findInTable } from "../api/tableData"
 import { photos } from "../imports/photos"
 
 const pts = (s: Standing) => s.pts ?? s.w * 3 + s.d
@@ -20,24 +23,54 @@ export default function Team({ id, onOpen, onTeam, onLeague, onSignIn, back }: {
   useEffect(() => {
     loadTeamMatches(id).catch(() => {})
   }, [id, loadTeamMatches])
+  // Clubs outside the bundled data (lower divisions, other countries): ask the API where they play.
+  const [remote, setRemote] = useState<{ league?: string; leagues: string[]; stadium?: string; city?: string; country?: string } | null>(null)
+  useEffect(() => {
+    setRemote(null)
+    if (detailsFor(id)) return
+    let cancelled = false
+    api
+      .team(id)
+      .then(({ team }) => {
+        if (cancelled) return
+        const comps = team.competitions.map((c) =>
+          registerLeague({ slug: c.league.id, name: c.league.name, short: c.league.short }),
+        )
+        const own = comps.find((c) => c.slug === team.leagueId) ?? comps.find((c) => !c.slug.startsWith("uefa")) ?? comps[0]
+        setRemote({ league: own?.name, leagues: comps.map((c) => c.name), stadium: team.stadium ?? undefined, city: team.city ?? undefined, country: team.country ?? undefined })
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [id])
+  const league = domesticLeague(id) ?? remote?.league ?? teams[id]?.league
+  const table = useLeagueTable(league)
 
   const t = teams[id]
   if (!t) return null
   const following = favorites.has(id)
 
-  const details = detailsFor(id)
-  const league = domesticLeague(id) ?? t.league
+  const details = detailsFor(id) ?? (remote ? { ...remote, leagues: remote.leagues } : undefined)
   const info = league ? leagueByName[league] : undefined
-  const placed = league ? positionIn(league, id) : null
+  const placed = findInTable(table.groups, id)
   const standing = placed?.row
   const position = placed?.pos ?? null
   // Five-row window of the table around this club
   const groupRows = placed?.group.rows ?? []
   const start = Math.max(0, Math.min((position ?? 1) - 3, groupRows.length - 5))
   const tableWindow = groupRows.slice(start, start + 5)
-  const leagueMates = league ? clubsIn(league).filter((x) => x !== id) : []
+  const fromTable = table.official.flatMap((g) => g.rows.map((r) => r.team))
+  const leagueMates = (fromTable.length ? fromTable : league ? clubsIn(league) : []).filter((x) => x !== id)
 
-  const fixtures = matches.filter((m) => m.home === id || m.away === id)
+  // In play first, then the next five fixtures, then the last five results.
+  const mine = matches.filter((m) => m.home === id || m.away === id)
+  const at = (m: (typeof mine)[number]) => m.kickoffAt ?? ""
+  const fixtures = [
+    ...mine.filter((m) => m.status === "LIVE" || m.status === "HT"),
+    ...mine.filter((m) => m.status === "UPCOMING" || m.status === "POSTPONED").sort((x, y) => at(x).localeCompare(at(y))).slice(0, 5),
+    ...mine.filter((m) => m.status === "FT").sort((x, y) => at(y).localeCompare(at(x))).slice(0, 5),
+  ]
   const follow = async () => {
     if ((await toggleFavorite(id)) === "signin") onSignIn()
   }
@@ -72,12 +105,18 @@ export default function Team({ id, onOpen, onTeam, onLeague, onSignIn, back }: {
             </p>
             <div className="mt-3 flex flex-wrap justify-center gap-2 sm:justify-start">
               {details?.stadium && (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-ink/50 px-3 py-1 text-[12px] font-semibold text-fg/90 backdrop-blur">
+                <a
+                  href={mapsUrl(details.stadium, details.city)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={`${details.stadium} on Google Maps`}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-ink/50 px-3 py-1 text-[12px] font-semibold text-fg/90 backdrop-blur hover:border-volt/40"
+                >
                   <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-mut" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M3 20h18M5 20V9l7-5 7 5v11M9 20v-6h6v6" strokeLinejoin="round" />
                   </svg>
                   {details.stadium}
-                </span>
+                </a>
               )}
               {(details?.leagues ?? (league ? [league] : [])).map((l) => {
                 const li = leagueByName[l]
@@ -107,12 +146,16 @@ export default function Team({ id, onOpen, onTeam, onLeague, onSignIn, back }: {
             {following ? "Following" : "Follow"}
           </button>
           {position && (
-            <div className="flex items-center gap-2 rounded-2xl border border-line bg-ink-2/70 px-5 py-3 text-center">
+            <button
+              onClick={() => league && onLeague(league)}
+              title="Open the full table"
+              className="flex items-center gap-2 rounded-2xl border border-line bg-ink-2/70 px-5 py-3 text-center hover:border-volt/40"
+            >
               <div>
                 <div className="font-mono-num text-2xl font-extrabold text-volt">#{position}</div>
                 <div className="text-[11px] uppercase tracking-wider text-mut-2">{info?.short ?? "League"}</div>
               </div>
-            </div>
+            </button>
           )}
         </div>
       </section>
@@ -133,7 +176,7 @@ export default function Team({ id, onOpen, onTeam, onLeague, onSignIn, back }: {
       {standing && (
         <div className="mt-3 flex items-center gap-3 card rounded-2xl px-5 py-4">
           <span className="text-[11px] font-bold uppercase tracking-wider text-mut-2">Recent Form</span>
-          <FormPills form={standing.form} size={24} />
+          <FormPills form={standing.form} details={standing.formDetail} onOpen={onOpen} size={24} />
         </div>
       )}
 
@@ -143,7 +186,7 @@ export default function Team({ id, onOpen, onTeam, onLeague, onSignIn, back }: {
           <h2 className="border-b border-line px-5 py-3.5 font-display text-sm font-bold uppercase tracking-wider text-mut">
             Fixtures &amp; Results
           </h2>
-          {fixtures.length === 0 && <p className="px-5 py-10 text-center text-sm text-mut">No scheduled fixtures.</p>}
+          {fixtures.length === 0 && <p className="px-5 py-10 text-center text-sm text-mut">No matches from yesterday to the next few days.</p>}
           {fixtures.map((m) => {
             const opp = m.home === id ? m.away : m.home
             const homeGame = m.home === id
@@ -163,7 +206,9 @@ export default function Team({ id, onOpen, onTeam, onLeague, onSignIn, back }: {
                 <Crest id={opp} size={22} />
                 <span className="min-w-0 flex-1 truncate text-sm font-medium text-fg">{teams[opp].name}</span>
                 {m.status === "UPCOMING" ? (
-                  <span className="font-mono-num text-[13px] font-semibold text-mut">{m.kickoff}</span>
+                  <span className="text-right font-mono-num text-[12px] font-semibold text-mut">
+                    {m.kickoffAt && new Date(m.kickoffAt).toLocaleDateString([], { day: "numeric", month: "short" })} {m.kickoff}
+                  </span>
                 ) : (
                   <span className="flex items-center gap-2">
                     <span className={`font-mono-num text-sm font-bold ${decided ? (forGoals > agGoals ? "text-volt" : forGoals < agGoals ? "text-live" : "text-mut") : "text-fg"}`}>
@@ -180,14 +225,19 @@ export default function Team({ id, onOpen, onTeam, onLeague, onSignIn, back }: {
         {/* League position */}
         <section className="card overflow-hidden rounded-2xl">
           <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-3.5">
-            <h2 className="font-display text-sm font-bold uppercase tracking-wider text-mut">{placed?.group.group ?? league ?? "League"}</h2>
+            <h2 className="flex items-center gap-2 font-display text-sm font-bold uppercase tracking-wider text-mut">
+              {placed?.group.group ?? league ?? "League"}
+              {table.live > 0 && <span className="rounded bg-live px-1.5 py-0.5 font-sans text-[9px] font-bold text-white">LIVE</span>}
+            </h2>
             {league && leagueByName[league] && (
               <button onClick={() => onLeague(league)} className="text-[12px] font-semibold text-volt hover:underline">
                 Full table →
               </button>
             )}
           </div>
-          {tableWindow.length === 0 && <p className="px-5 py-10 text-center text-sm text-mut">No table available.</p>}
+          {tableWindow.length === 0 && (
+            <p className="px-5 py-10 text-center text-sm text-mut">{table.loading ? "Loading the latest table…" : (table.error ?? "No table available.")}</p>
+          )}
           <ul className="p-2">
             {tableWindow.map((r, i) => (
               <li key={r.team}>
@@ -196,14 +246,19 @@ export default function Team({ id, onOpen, onTeam, onLeague, onSignIn, back }: {
                   className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left ${r.team === id ? "bg-volt/10 ring-1 ring-volt/30" : "hover:bg-white/[0.04]"}`}
                 >
                   <span className="w-5 font-mono-num text-[12px] font-bold text-mut">{start + i + 1}</span>
+                  <MoveArrow move={r.move} />
                   <Crest id={r.team} size={22} />
                   <span className="min-w-0 flex-1 truncate text-sm font-semibold">{teams[r.team]?.name}</span>
+                  <LiveResultPill live={r.live} />
                   <span className="font-mono-num text-[12px] text-mut">{gd(r) > 0 ? `+${gd(r)}` : gd(r)}</span>
                   <span className="w-7 text-right font-mono-num text-sm font-bold">{pts(r)}</span>
                 </button>
               </li>
             ))}
           </ul>
+          <div className="border-t border-white/[0.06] px-5 py-2.5">
+            <UpdatedAgo iso={table.updatedAt} />
+          </div>
         </section>
       </div>
 
@@ -237,3 +292,5 @@ function Stat({ label, value, accent }: { label: string; value: number | string;
     </div>
   )
 }
+
+const mapsUrl = (stadium: string, city?: string) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([stadium, city].filter(Boolean).join(", "))}`

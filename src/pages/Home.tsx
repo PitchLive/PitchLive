@@ -1,19 +1,20 @@
 import { useEffect, useState } from "react"
 import { teams, type Match } from "../data"
 import { useLive } from "../api/LiveProvider"
+import { usePrefersReducedMotion } from "../api/motion"
 import { Crest, LeagueLogo, LiveBadge } from "../components/ui"
 import MatchCard from "../components/MatchCard"
 import LeagueFilters from "../components/LeagueFilters"
 import BackgroundSlider from "../components/BackgroundSlider"
 import type { Page } from "../components/Navbar"
 import { photos } from "../imports/photos"
-import { leagueCatalog, tableFor } from "../leagueInfo"
+import { leagueCatalog } from "../leagueInfo"
 
 const isLive = (m: Match) => m.status === "LIVE" || m.status === "HT"
 const isToday = (m: Match) => !m.kickoffAt || new Date(m.kickoffAt).toDateString() === new Date().toDateString()
 
 export default function Home({ onOpen, onLeague, go }: { onOpen: (id: string) => void; onLeague: (name: string) => void; go: (p: Page) => void }) {
-  const { matches, online, user } = useLive()
+  const { matches, online, user, summaries } = useLive()
   const [league, setLeague] = useState("All")
 
   const live = matches.filter(isLive)
@@ -24,11 +25,13 @@ export default function Home({ onOpen, onLeague, go }: { onOpen: (id: string) =>
   const idx = spotlight.length ? heroIdx % spotlight.length : 0
   const feat = spotlight[idx]
 
+  // Auto-advance, except for visitors who prefer reduced motion (the dots still switch matches).
+  const still = usePrefersReducedMotion()
   useEffect(() => {
-    if (spotlight.length <= 1) return
+    if (spotlight.length <= 1 || still) return
     const t = setInterval(() => setHeroIdx((i) => i + 1), 6000)
     return () => clearInterval(t)
-  }, [spotlight.length])
+  }, [spotlight.length, still])
 
   const today = matches.filter(isToday)
   const matchLeagues = leagueCatalog.map((l) => l.name).filter((l) => today.some((m) => m.league === l))
@@ -176,7 +179,7 @@ export default function Home({ onOpen, onLeague, go }: { onOpen: (id: string) =>
       </div>
       <div className="no-scrollbar -mx-1 flex gap-3 overflow-x-auto px-1 pb-2">
         {leagueCatalog.map((l) => {
-          const leader = tableFor(l.name)[0]?.rows[0]
+          const leader = summaries[l.name]?.top[0]
           const liveHere = live.filter((m) => m.league === l.name).length
           return (
             <button key={l.name} onClick={() => onLeague(l.name)} className="card card-hover relative w-56 shrink-0 overflow-hidden rounded-2xl p-4 text-left">
@@ -193,7 +196,7 @@ export default function Home({ onOpen, onLeague, go }: { onOpen: (id: string) =>
                 <div className="relative mt-4 flex items-center gap-2 rounded-xl bg-white/[0.04] px-2.5 py-2">
                   <Crest id={leader.team} size={20} />
                   <span className="min-w-0 flex-1 truncate text-[12px] font-semibold">{teams[leader.team]?.name}</span>
-                  <span className="font-mono-num text-[12px] font-bold text-volt">{leader.pts}</span>
+                  <span className="font-mono-num text-[12px] font-bold text-volt">{leader.points}</span>
                 </div>
               )}
             </button>

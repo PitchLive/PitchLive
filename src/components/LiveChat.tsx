@@ -30,7 +30,7 @@ function RealChat({ matchId, onSignIn }: { matchId: string; onSignIn?: () => voi
       .finally(() => !cancelled && setLoading(false))
     const stop = watchMatch(matchId, (e) => {
       if (e.type === "chat") setMsgs((m) => (m.some((x) => x.id === e.message.id) ? m : [...m.slice(-99), e.message]))
-      else setNotice(e.error)
+      else if (e.type === "error") setNotice(e.error)
     })
     return () => {
       cancelled = true

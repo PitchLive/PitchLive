@@ -15,7 +15,7 @@ export default function CountryRailItem({
   onPin,
 }: {
   name: string
-  flag: string
+  flag: React.ReactNode
   sport: string
   expanded: boolean
   activeLeagueId: string | null

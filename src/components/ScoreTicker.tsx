@@ -2,7 +2,7 @@ import { teams } from "../data"
 import { useLive } from "../api/LiveProvider"
 import { LiveClock } from "./ui"
 
-export default function ScoreTicker({ onOpen }: { onOpen: (id: string) => void }) {
+export default function ScoreTicker({ onOpen, onAll }: { onOpen: (id: string) => void; onAll: () => void }) {
   const { matches } = useLive()
   const live = matches.filter((m) => m.status === "LIVE" || m.status === "HT")
   if (!live.length) return null
@@ -10,9 +10,13 @@ export default function ScoreTicker({ onOpen }: { onOpen: (id: string) => void }
   return (
     <div className="border-b border-line bg-ink-2/80">
       <div className="mx-auto flex max-w-[1400px] items-center">
-        <span className="flex shrink-0 items-center gap-1.5 border-r border-line px-4 py-2 text-[11px] font-bold uppercase tracking-widest text-live">
+        <button
+          onClick={onAll}
+          title="All live scores"
+          className="flex shrink-0 items-center gap-1.5 border-r border-line px-4 py-2 text-[11px] font-bold uppercase tracking-widest text-live hover:bg-live/10"
+        >
           <span className="live-dot inline-block h-1.5 w-1.5 rounded-full bg-live" /> Live · {live.length}
-        </span>
+        </button>
         <div className="overflow-hidden">
           <div className="ticker-track flex w-max">
             {row.map((m, i) => (

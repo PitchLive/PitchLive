@@ -21,6 +21,12 @@ export default function App() {
   )
 }
 
+// New page: back to the top, and move focus to the content so screen readers announce it.
+function toTop() {
+  window.scrollTo({ top: 0 })
+  document.getElementById("main")?.focus({ preventScroll: true })
+}
+
 function Shell() {
   const { matches, online } = useLive()
   const [page, setPage] = useState<Page>("home")
@@ -31,46 +37,49 @@ function Shell() {
   function openLeague(name: string | null) {
     setLeague(name)
     setPage("competitions")
-    window.scrollTo({ top: 0 })
+    toTop()
   }
 
   function go(p: Page) {
     setLeague(null)
     setPage(p)
     setMatchId(null)
-    window.scrollTo({ top: 0 })
+    toTop()
   }
 
   function openMatch(id: string) {
     setMatchId(id)
     setPage("match")
-    window.scrollTo({ top: 0 })
+    toTop()
   }
 
   function openTeam(id: string) {
     setTeamId(id)
     setPage("team")
-    window.scrollTo({ top: 0 })
+    toTop()
   }
 
   const liveCount = matches.filter((m) => m.status === "LIVE" || m.status === "HT").length
 
   return (
     <div className="min-h-screen bg-ink text-fg">
+      <a href="#main" className="skip-link">
+        Skip to content
+      </a>
       <Navbar page={page} go={go} onTeam={openTeam} onLeague={openLeague} />
-      <ScoreTicker onOpen={openMatch} />
+      <ScoreTicker onOpen={openMatch} onAll={() => go("scores")} />
       {online === false && (
         <div className="border-b border-amber/30 bg-amber/10 px-4 py-2 text-center text-[13px] text-amber">
           Live scores are unavailable right now. We&rsquo;ll reconnect automatically.
         </div>
       )}
 
-      <main className="pb-24">
+      <main id="main" tabIndex={-1} className="pb-24 outline-none">
         {page === "home" && <Home onOpen={openMatch} onLeague={(l) => openLeague(l || null)} go={go} />}
-        {page === "scores" && <Scores onOpen={openMatch} onTeam={openTeam} go={go} />}
-        {page === "competitions" && <Competitions onTeam={openTeam} league={league} setLeague={openLeague} />}
+        {page === "scores" && <Scores onOpen={openMatch} onTeam={openTeam} onLeague={openLeague} go={go} />}
+        {page === "competitions" && <Competitions onTeam={openTeam} onOpen={openMatch} league={league} setLeague={openLeague} />}
         {page === "streaming" && <Streaming onOpen={openMatch} go={go} />}
-        {page === "match" && matchId && <MatchDetail id={matchId} onTeam={openTeam} go={go} back={() => go("scores")} />}
+        {page === "match" && matchId && <MatchDetail id={matchId} onTeam={openTeam} onOpen={openMatch} onLeague={openLeague} go={go} back={() => go("scores")} />}
         {page === "team" && teamId && (
           <Team id={teamId} onOpen={openMatch} onTeam={openTeam} onLeague={openLeague} onSignIn={() => go("signin")} back={() => (league ? openLeague(league) : go("scores"))} />
         )}
@@ -83,14 +92,18 @@ function Shell() {
 
       <footer className="border-t border-white/[0.06]">
         <div className="mx-auto flex max-w-[1400px] flex-col items-center justify-between gap-4 px-6 py-8 sm:flex-row">
-          <img src={logo} alt="PITCHLIVE" className="h-10 w-auto object-contain" />
+          <button onClick={() => go("home")} aria-label="PitchLive home" className="shrink-0">
+            <img src={logo} alt="PITCHLIVE" className="h-10 w-auto object-contain" />
+          </button>
           <p className="text-[12px] text-mut-2">
             Scores, fixtures and tables: ESPN. Not affiliated with any club or competition.
           </p>
-          <div className="flex gap-4 text-[13px] text-mut">
+          <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 text-[13px] text-mut">
             <button className="hover:text-fg" onClick={() => go("about")}>About</button>
             <button className="hover:text-fg" onClick={() => go("fixtures")}>Fixtures</button>
             <button className="hover:text-fg" onClick={() => go("help")}>Help</button>
+            <button className="hover:text-fg" onClick={() => go("terms")}>Terms</button>
+            <button className="hover:text-fg" onClick={() => go("privacy")}>Privacy</button>
           </div>
         </div>
       </footer>

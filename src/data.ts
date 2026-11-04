@@ -32,7 +32,7 @@ import acMilanLogo from "./imports/logos/ac-milan.svg"
 import monacoLogo from "./imports/logos/as-monaco.svg"
 import sevillaLogo from "./imports/logos/sevilla.svg"
 import { additionalTeams } from "./additionalTeams"
-import { feedTeams, remoteLogos, leagueTables } from "./generated/leagueData"
+import { feedTeams, remoteLogos } from "./generated/leagueData"
 import { leagueCatalog, domesticLeague } from "./leagueInfo"
 
 export type Team = {
@@ -64,6 +64,8 @@ export type Match = {
   clockSeconds?: number
   clockDisplay?: string // "67'", "45'+2'"
   clockAt?: number // Date.now() at which clockSeconds was current
+  lastGoalAt?: number // Date.now() when a goal was last seen arriving live
+  lastGoalSide?: "home" | "away"
 }
 
 // Real clubs. Brand colours are used for the generated fallback crest;
@@ -115,6 +117,27 @@ for (const t of Object.values(teams)) {
 
 export const leagues = leagueCatalog.map((l) => l.name)
 
+/** Adds a club the API knows about but the bundled list doesn't (cup opponents, promoted sides). */
+export function registerTeam(t: { id: string; name: string; short: string; color: string; color2: string; logo: string | null }) {
+  if (!teams[t.id]) teams[t.id] = { id: t.id, name: t.name, short: t.short, city: "", color: t.color, color2: t.color2, logo: t.logo ?? undefined }
+}
+
+const foldName = (s: string) =>
+  s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/\b(fc|cf|afc|club|sc|ac|ssc|cd)\b/g, "")
+    .replace(/[^a-z0-9]/g, "")
+
+/** Finds a club by display name, ignoring accents and suffixes like "FC" ("Sevilla" → Sevilla FC). */
+export function findTeamByName(name: string): Team | undefined {
+  const key = foldName(name)
+  if (key.length < 3) return undefined
+  const all = Object.values(teams)
+  return all.find((t) => foldName(t.name) === key) ?? (key.length >= 5 ? all.find((t) => foldName(t.name).includes(key)) : undefined)
+}
+
 export type Standing = {
   team: string
   p: number
@@ -126,11 +149,4 @@ export type Standing = {
   pts?: number
   form: ("W" | "D" | "L")[]
 }
-
-// Flattened single-table view per competition (MLS conferences etc. are concatenated).
-export const leagueStandings: Record<string, Standing[]> = Object.fromEntries(
-  Object.entries(leagueTables).map(([k, groups]) => [k, groups.flatMap((g) => g.rows)]),
-)
-
-export const standings: Standing[] = leagueStandings["Premier League"]
 

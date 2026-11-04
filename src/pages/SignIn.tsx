@@ -2,8 +2,6 @@ import { useState } from "react"
 import type { Page } from "../components/Navbar"
 import { useLive } from "../api/LiveProvider"
 import { photos } from "../imports/photos"
-import googleLogo from "../imports/icons/google.svg"
-import appleLogo from "../imports/icons/apple.svg"
 
 export default function SignIn({ go }: { go: (p: Page) => void }) {
   const { online, login, register, matches } = useLive()
@@ -115,14 +113,6 @@ export default function SignIn({ go }: { go: (p: Page) => void }) {
             {busy ? "Please wait…" : mode === "in" ? "Sign In" : "Create Account"}
           </button>
 
-          <div className="flex items-center gap-3 py-1 text-[11px] uppercase tracking-wider text-mut-2">
-            <span className="h-px flex-1 bg-line" /> or <span className="h-px flex-1 bg-line" />
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            <SocialBtn label="Google" icon={googleLogo} />
-            <SocialBtn label="Apple" icon={appleLogo} />
-          </div>
         </form>
 
         <p className="mt-5 text-center text-[12px] text-mut-2">
@@ -175,21 +165,5 @@ function Field({
         className="w-full rounded-xl border border-line bg-ink-2 px-3 py-2.5 text-sm text-fg placeholder:text-mut-2 focus:border-volt/50 focus:outline-none"
       />
     </label>
-  )
-}
-
-// Social sign-in isn't wired to a provider yet.
-function SocialBtn({ label, icon }: { label: string; icon: string }) {
-  return (
-    <button
-      type="button"
-      disabled
-      title={`${label} sign-in is coming soon`}
-      className="flex items-center justify-center gap-2 rounded-xl border border-line bg-ink-2 py-2.5 text-sm font-semibold text-fg opacity-60"
-    >
-      <img src={icon} alt="" className="h-5 w-5" />
-      {label}
-      <span className="text-[10px] font-medium text-mut-2">soon</span>
-    </button>
   )
 }

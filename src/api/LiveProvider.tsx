@@ -1,17 +1,21 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { teams, type Match } from "../data"
-import { leagueCatalog } from "../leagueInfo"
-import { ApiError, api, liveSocketUrl, type ApiMatch, type ApiTeamSummary, type ChatMessage, type LiveEvent, type User } from "./client"
+import { registerTeam, teams, type Match } from "../data"
+import { leagueByName, leagueBySlug, registerLeague } from "../leagueInfo"
+import { ApiError, api, liveSocketUrl, type ApiMatch, type ChatMessage, type LiveEvent, type MatchDetails, type User } from "./client"
 import { elapsedSeconds, readingSeconds } from "./clock"
+import { toLeagueTable, toSummary, type LeagueSummary, type LeagueTable } from "./tableData"
 
-export type ChatEvent = { type: "chat"; message: ChatMessage } | { type: "error"; error: string }
-type ChatListener = (e: ChatEvent) => void
+/** Events for one match: chat messages, live details (stats, line-ups, commentary) and socket errors. */
+export type MatchFeedEvent = { type: "chat"; message: ChatMessage } | { type: "details"; details: MatchDetails } | { type: "error"; error: string }
+type ChatListener = (e: MatchFeedEvent) => void
 
 export type Alert = { id: string; matchId: string; kind: "goal" | "kickoff" | "ht" | "ft"; title: string; body: string; at: number; read: boolean }
 
 type LiveState = {
   /** null while the first API check is running; false when the service can't be reached. */
   online: boolean | null
+  /** True until the first batch of matches has arrived. */
+  matchesLoading: boolean
   connected: boolean
   user: User | null
   matches: Match[]
@@ -28,6 +32,14 @@ type LiveState = {
   logout: () => Promise<void>
   watchMatch: (matchId: string, listener: ChatListener) => () => void
   sendChat: (matchId: string, body: string) => boolean
+  /** League tables by league name, from the API. */
+  tables: Record<string, LeagueTable>
+  tableErrors: Record<string, string>
+  loadTable: (league: string, force?: boolean) => Promise<void>
+  /** Leaders and top three of every league, by league name. */
+  summaries: Record<string, LeagueSummary>
+  /** A league's season results (latest first) or fixtures (soonest first). */
+  fetchLeagueMatches: (league: string, kind: "results" | "fixtures") => Promise<Match[]>
 }
 
 const LiveContext = createContext<LiveState | null>(null)
@@ -38,12 +50,9 @@ export function useLive() {
   return ctx
 }
 
-const leagueNameBySlug = new Map(leagueCatalog.map((l) => [l.slug, l.name]))
 
-// Clubs the server discovers (cup opponents, promoted sides) aren't in the bundled list yet.
-function registerTeam(t: ApiTeamSummary) {
-  if (!teams[t.id]) teams[t.id] = { id: t.id, name: t.name, short: t.short, city: "", color: t.color, color2: t.color2, logo: t.logo ?? undefined }
-}
+// A cached table is reused this long; table events from the server force a refresh anyway.
+const TABLE_TTL_MS = 60_000
 
 // A new reading only moves the running clock back if it's well behind (a real correction):
 // ESPN's clock is often minute-precise, and every poll would otherwise snap 67:40 back to 67:00.
@@ -54,7 +63,7 @@ function toMatch(a: ApiMatch, prev: Match | undefined, receivedAt: number): Matc
   registerTeam(a.away)
   const next: Match = {
     id: a.id,
-    league: leagueNameBySlug.get(a.leagueId ?? "") ?? "Other competitions",
+    league: a.leagueId ? (leagueBySlug[a.leagueId]?.name ?? (a.leagueName ? registerLeague({ slug: a.leagueId, name: a.leagueName }).name : "Other competitions")) : "Other competitions",
     home: a.home.id,
     away: a.away.id,
     homeScore: a.homeScore,
@@ -69,6 +78,13 @@ function toMatch(a: ApiMatch, prev: Match | undefined, receivedAt: number): Matc
     clockSeconds: a.clockSeconds ?? undefined,
     clockDisplay: a.clockDisplay ?? undefined,
     clockAt: receivedAt - a.clockAgeMs,
+  }
+  // Remember when a goal arrives so score rows can flash, Flashscore-style.
+  if (prev) {
+    next.lastGoalAt = prev.lastGoalAt
+    next.lastGoalSide = prev.lastGoalSide
+    if (next.homeScore > prev.homeScore) [next.lastGoalAt, next.lastGoalSide] = [receivedAt, "home"]
+    else if (next.awayScore > prev.awayScore) [next.lastGoalAt, next.lastGoalSide] = [receivedAt, "away"]
   }
   if (prev && prev.status === "LIVE" && next.status === "LIVE" && prev.period === next.period) {
     const running = elapsedSeconds(prev, receivedAt)
@@ -105,11 +121,19 @@ const utcDay = (offset: number) => new Date(Date.now() + offset * 86_400_000).to
 
 export function LiveProvider({ children }: { children: ReactNode }) {
   const [online, setOnline] = useState<boolean | null>(null)
+  const [matchesLoaded, setMatchesLoaded] = useState(false)
   const [connected, setConnected] = useState(false)
   const [user, setUser] = useState<User | null>(null)
   const [byId, setById] = useState<Map<string, Match>>(new Map())
   const [favorites, setFavorites] = useState<Set<string>>(new Set())
   const [alerts, setAlerts] = useState<Alert[]>([])
+  const [tables, setTables] = useState<Record<string, LeagueTable>>({})
+  const [tableErrors, setTableErrors] = useState<Record<string, string>>({})
+  const [summaries, setSummaries] = useState<Record<string, LeagueSummary>>({})
+  const tablesRef = useRef(tables)
+  tablesRef.current = tables
+  const tableInflight = useRef(new Map<string, Promise<void>>())
+  const summariesTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   const byIdRef = useRef(byId)
   const favoritesRef = useRef(favorites)
@@ -137,6 +161,43 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       setAlerts((old) => [...raised.filter((r) => !old.some((o) => o.id === r.id)).reverse(), ...old].slice(0, 50))
   }, [])
 
+  const loadTable = useCallback(async (league: string, force = false) => {
+    const slug = leagueByName[league]?.slug
+    if (!slug) return
+    const cached = tablesRef.current[league]
+    if (!force && cached && Date.now() - cached.fetchedAt < TABLE_TTL_MS) return
+    let pending = tableInflight.current.get(league)
+    if (!pending) {
+      pending = api
+        .league(slug)
+        .then((res) => {
+          const table = toLeagueTable(res)
+          setTables((prev) => ({ ...prev, [league]: table }))
+          setTableErrors((prev) => {
+            if (!(league in prev)) return prev
+            const next = { ...prev }
+            delete next[league]
+            return next
+          })
+        })
+        .catch((err) => setTableErrors((prev) => ({ ...prev, [league]: err instanceof Error ? err.message : "Table unavailable" })))
+        .finally(() => tableInflight.current.delete(league))
+      tableInflight.current.set(league, pending)
+    }
+    return pending
+  }, [])
+
+  const refreshSummaries = useCallback(async () => {
+    const { leagues } = await api.leagues()
+    setSummaries(Object.fromEntries(leagues.map((l) => [l.name, toSummary(l)])))
+  }, [])
+
+  /** Re-read every table on screen, plus the leaders. Used after reconnects and tab switches. */
+  const refreshTables = useCallback(() => {
+    refreshSummaries().catch(() => {})
+    for (const league of Object.keys(tablesRef.current)) loadTable(league, true)
+  }, [loadTable, refreshSummaries])
+
   const refreshMatches = useCallback(async () => {
     const days = await Promise.all([-1, 0, 1].map((o) => api.matches(utcDay(o))))
     upsert(days.flatMap((d) => d.matches))
@@ -151,13 +212,14 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         if (cancelled) return
         setUser(user)
         setOnline(true)
-        await refreshMatches()
+        refreshSummaries().catch(() => {})
+        await refreshMatches().finally(() => setMatchesLoaded(true))
       })
       .catch(() => !cancelled && setOnline(false))
     return () => {
       cancelled = true
     }
-  }, [refreshMatches])
+  }, [refreshMatches, refreshSummaries])
 
   // Favourites follow the signed-in user.
   useEffect(() => {
@@ -189,7 +251,11 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       const ws = new WebSocket(liveSocketUrl())
       socketRef.current = ws
       ws.onopen = () => {
-        if (attempt > 0) refreshMatches().catch(() => {}) // catch up on anything missed
+        if (attempt > 0) {
+          // Catch up on anything missed while disconnected.
+          refreshMatches().catch(() => {})
+          refreshTables()
+        }
         attempt = 0
         setConnected(true)
         for (const topic of topicsRef.current) ws.send(JSON.stringify({ type: "subscribe", topic }))
@@ -198,6 +264,14 @@ export function LiveProvider({ children }: { children: ReactNode }) {
         const e = JSON.parse(raw.data) as LiveEvent
         if (e.type === "match") upsert([e.match], true)
         else if (e.type === "chat") listenersRef.current.get(e.message.matchId)?.forEach((l) => l(e))
+        else if (e.type === "details") listenersRef.current.get(e.details.matchId)?.forEach((l) => l(e))
+        else if (e.type === "table") {
+          // Re-read that table if anything is showing it, and the leaders shortly after (batched).
+          const league = leagueBySlug[e.leagueId]?.name
+          if (league && tablesRef.current[league]) loadTable(league, true)
+          clearTimeout(summariesTimer.current)
+          summariesTimer.current = setTimeout(() => refreshSummaries().catch(() => {}), 1500)
+        }
         else if (e.type === "error") listenersRef.current.forEach((set) => set.forEach((l) => l(e)))
       }
       ws.onclose = () => {
@@ -210,7 +284,11 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     open()
 
     // Browsers throttle background tabs; resync as soon as the page is visible again.
-    const onVisible = () => document.visibilityState === "visible" && refreshMatches().catch(() => {})
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return
+      refreshMatches().catch(() => {})
+      refreshTables()
+    }
     document.addEventListener("visibilitychange", onVisible)
 
     return () => {
@@ -220,7 +298,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       socketRef.current?.close()
       socketRef.current = null
     }
-  }, [online, user?.id, upsert, refreshMatches])
+  }, [online, user?.id, upsert, refreshMatches, refreshTables, loadTable, refreshSummaries])
 
   const send = (msg: unknown) => {
     const ws = socketRef.current
@@ -264,10 +342,19 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     [online, upsert],
   )
 
+  const fetchLeagueMatches = useCallback(async (league: string, kind: "results" | "fixtures") => {
+    const slug = leagueByName[league]?.slug
+    if (!slug) return []
+    const { matches: list } = await api.leagueMatches(slug, kind)
+    const now = Date.now()
+    return list.map((a) => toMatch(a, byIdRef.current.get(a.id), now))
+  }, [])
+
   const value = useMemo<LiveState>(() => {
     const list = [...byId.values()].sort((a, b) => (a.kickoffAt ?? "").localeCompare(b.kickoffAt ?? ""))
     return {
       online,
+      matchesLoading: online === null || (online === true && !matchesLoaded),
       connected,
       user,
       matches: list,
@@ -307,8 +394,13 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       },
       watchMatch,
       sendChat: (matchId, body) => send({ type: "chat", matchId, body }),
+      tables,
+      tableErrors,
+      loadTable,
+      summaries,
+      fetchLeagueMatches,
     }
-  }, [online, connected, user, byId, favorites, alerts, loadMatch, loadTeamMatches, watchMatch])
+  }, [online, matchesLoaded, connected, user, byId, favorites, alerts, loadMatch, loadTeamMatches, watchMatch, tables, tableErrors, loadTable, summaries, fetchLeagueMatches])
 
   return <LiveContext.Provider value={value}>{children}</LiveContext.Provider>
 }

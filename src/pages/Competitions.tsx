@@ -1,37 +1,34 @@
 import { useMemo, useState } from "react"
-import { teams, type Standing } from "../data"
-import { Crest, FormPills, LeagueLogo } from "../components/ui"
-import {
-  REGIONS,
-  clubsIn,
-  detailsFor,
-  leagueByName,
-  leagueCatalog,
-  positionIn,
-  seasonLabel,
-  tableFor,
-  type LeagueInfo,
-  type Region,
-} from "../leagueInfo"
+import { findTeamByName, teams, type Standing } from "../data"
+import { Crest, FormPills, LeagueLogo, LiveResultPill, MoveArrow, SkeletonRows, UpdatedAgo } from "../components/ui"
+import { useLive } from "../api/LiveProvider"
+import { useLeagueTable } from "../api/useLeagueTable"
+import { useLeagueMatches } from "../api/useLeagueMatches"
+import { LeagueOverview, MatchList } from "../components/LeagueMatches"
+import { findInTable, type TableGroup, type TableRow } from "../api/tableData"
+import { REGIONS, clubsIn, detailsFor, leagueByName, leagueCatalog, seasonLabel, type LeagueInfo, type Region } from "../leagueInfo"
 
 type SortKey = "pts" | "p" | "gf" | "ga" | "gd" | "w" | "d" | "l"
-type Tab = "table" | "clubs"
+type Tab = "overview" | "results" | "fixtures" | "table" | "clubs"
+const TAB_LABEL: Record<Tab, string> = { overview: "Overview", results: "Results", fixtures: "Fixtures", table: "Standings", clubs: "Clubs" }
 
 const pts = (s: Standing) => s.pts ?? s.w * 3 + s.d
 const gd = (s: Standing) => s.gf - s.ga
 
 export default function Competitions({
   onTeam,
+  onOpen,
   league,
   setLeague,
 }: {
   onTeam: (id: string) => void
+  onOpen: (matchId: string) => void
   league: string | null
   setLeague: (l: string | null) => void
 }) {
   const info = league ? leagueByName[league] : null
   return info ? (
-    <LeagueView info={info} onTeam={onTeam} back={() => setLeague(null)} switchTo={setLeague} />
+    <LeagueView info={info} onTeam={onTeam} onOpen={onOpen} back={() => setLeague(null)} switchTo={setLeague} />
   ) : (
     <LeagueDirectory open={setLeague} />
   )
@@ -103,10 +100,12 @@ function LeagueDirectory({ open }: { open: (l: string) => void }) {
 }
 
 function LeagueCard({ info, onOpen }: { info: LeagueInfo; onOpen: () => void }) {
-  const groups = tableFor(info.name)
-  const leaders = groups.map((g) => g.rows[0]).filter(Boolean)
-  const top = groups[0]?.rows.slice(0, 3) ?? []
+  const { summaries, matches, online } = useLive()
+  const summary = summaries[info.name]
+  const leaders = summary?.leaders ?? []
+  const top = summary?.top ?? []
   const clubs = clubsIn(info.name).length
+  const liveHere = matches.filter((m) => m.league === info.name && (m.status === "LIVE" || m.status === "HT")).length
 
   return (
     <button onClick={onOpen} className="card card-hover group relative block h-full w-full overflow-hidden rounded-3xl p-5 text-left">
@@ -121,7 +120,14 @@ function LeagueCard({ info, onOpen }: { info: LeagueInfo; onOpen: () => void }) 
             <span className="rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-mut">{info.code}</span>
             <span className="truncate text-[12px] text-mut">{info.country}</span>
           </div>
-          <h3 className="mt-1 truncate font-display text-lg font-extrabold tracking-tight">{info.name}</h3>
+          <h3 className="mt-1 flex items-center gap-2 font-display text-lg font-extrabold tracking-tight">
+            <span className="truncate">{info.name}</span>
+            {liveHere > 0 && (
+              <span className="flex shrink-0 items-center gap-1 rounded-full bg-live/15 px-2 py-0.5 font-sans text-[10px] font-bold text-live">
+                <span className="live-dot inline-block h-1 w-1 rounded-full bg-live" /> {liveHere} live
+              </span>
+            )}
+          </h3>
           <p className="text-[12px] text-mut-2">
             {clubs} clubs · Est. {info.founded}
           </p>
@@ -130,19 +136,20 @@ function LeagueCard({ info, onOpen }: { info: LeagueInfo; onOpen: () => void }) 
       </div>
 
       <div className="relative mt-5 space-y-1.5">
-        {top.map((r, i) => (
+        {top.map((r) => (
           <div key={r.team} className="flex items-center gap-3 rounded-xl bg-white/[0.03] px-3 py-2">
-            <span className={`w-4 font-mono-num text-[12px] font-bold ${i === 0 ? "text-volt" : "text-mut-2"}`}>{i + 1}</span>
+            <span className={`w-4 font-mono-num text-[12px] font-bold ${r.position === 1 ? "text-volt" : "text-mut-2"}`}>{r.position}</span>
             <Crest id={r.team} size={20} />
             <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-fg/90">{teams[r.team]?.name}</span>
-            <span className="font-mono-num text-[13px] font-bold text-fg">{pts(r)}</span>
+            <span className="font-mono-num text-[13px] font-bold text-fg">{r.points}</span>
           </div>
         ))}
+        {!summary && online !== false && [0, 1, 2].map((i) => <div key={i} className="h-9 animate-pulse rounded-xl bg-white/[0.03]" />)}
       </div>
 
       {leaders.length > 1 && (
         <p className="relative mt-3 text-[11px] text-mut-2">
-          {groups.length} groups · leaders {leaders.map((r) => teams[r.team]?.short).join(", ")}
+          {leaders.length} groups · leaders {leaders.map((r) => teams[r.team]?.short).join(", ")}
         </p>
       )}
     </button>
@@ -154,20 +161,30 @@ function LeagueCard({ info, onOpen }: { info: LeagueInfo; onOpen: () => void }) 
 function LeagueView({
   info,
   onTeam,
+  onOpen,
   back,
   switchTo,
 }: {
   info: LeagueInfo
   onTeam: (id: string) => void
+  onOpen: (matchId: string) => void
   back: () => void
   switchTo: (l: string) => void
 }) {
-  const [tab, setTab] = useState<Tab>("table")
-  const groups = tableFor(info.name)
-  const clubs = clubsIn(info.name)
+  const [tab, setTab] = useState<Tab>("overview")
+  const season = useLeagueMatches(info.name)
+  const [showLive, setShowLive] = useState(true)
+  const table = useLeagueTable(info.name)
+  // Live table while matches are in play (unless switched off), otherwise the official one.
+  const groups = table.live > 0 && showLive ? table.groups : table.official
+  const fromTable = groups.flatMap((g) => g.rows.map((r) => r.team))
+  const fromMatches = [...new Set([...season.results, ...season.fixtures, ...season.live].flatMap((m) => [m.home, m.away]))]
+  const clubs = fromTable.length ? fromTable : clubsIn(info.name).length ? clubsIn(info.name) : fromMatches
   const leader = groups[0]?.rows[0]
-  const totalGoals = Math.round(groups.reduce((a, g) => a + g.rows.reduce((b, r) => b + r.gf, 0), 0) / 2)
-  const matchesPlayed = Math.round(groups.reduce((a, g) => a + g.rows.reduce((b, r) => b + r.p, 0), 0) / 2)
+  const totalGoals = groups.length
+    ? Math.round(groups.reduce((a, g) => a + g.rows.reduce((b, r) => b + r.gf, 0), 0) / 2)
+    : season.results.reduce((a, m) => a + m.homeScore + m.awayScore, 0)
+  const matchesPlayed = groups.length ? Math.round(groups.reduce((a, g) => a + g.rows.reduce((b, r) => b + r.p, 0), 0) / 2) : season.results.length
 
   return (
     <div className="mx-auto max-w-[1400px] px-4 py-6 sm:px-6">
@@ -205,16 +222,24 @@ function LeagueView({
               <div className="flex flex-wrap items-center gap-2 text-[12px] text-mut">
                 <span className="rounded-md bg-white/[0.08] px-1.5 py-0.5 text-[10px] font-bold tracking-wider">{info.code}</span>
                 {info.country}
-                <span className="text-mut-2">·</span>
-                Season {seasonLabel(info.name)}
+                {seasonLabel(info.name) && (
+                  <>
+                    <span className="text-mut-2">·</span>
+                    Season {seasonLabel(info.name)}
+                  </>
+                )}
+                {info.cup && <span className="rounded-md bg-white/[0.08] px-1.5 py-0.5 text-[10px] font-bold">CUP</span>}
+                {info.women && <span className="rounded-md bg-white/[0.08] px-1.5 py-0.5 text-[10px] font-bold">WOMEN</span>}
               </div>
               <h1 className="mt-1 font-display text-3xl font-black tracking-tight sm:text-5xl">{info.name}</h1>
-              <p className="mt-2 max-w-xl text-sm text-mut">{info.blurb}</p>
+              <p className="mt-2 max-w-xl text-sm text-mut">
+                {info.blurb || `Results, fixtures${info.cup ? "" : ", the table"} and live scores for the ${info.name}.`}
+              </p>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-2">
             <HeroStat label="Clubs" value={clubs.length} />
-            <HeroStat label="Founded" value={info.founded} />
+            {info.founded ? <HeroStat label="Founded" value={info.founded} /> : <HeroStat label="Played" value={matchesPlayed} />}
             <HeroStat label="Goals" value={totalGoals} />
             <HeroStat label="Goals / game" value={matchesPlayed ? (totalGoals / matchesPlayed).toFixed(2) : "—"} />
           </div>
@@ -231,7 +256,7 @@ function LeagueView({
               </div>
             </button>
           )}
-          <div className="flex items-center gap-3 bg-panel/80 px-6 py-4">
+          {info.recordHolder && <div className="flex items-center gap-3 bg-panel/80 px-6 py-4">
             <span className="grid h-[34px] w-[34px] place-items-center rounded-full bg-amber/15 text-amber">
               <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor">
                 <path d="M7 4h10v3a5 5 0 0 1-4 4.9V15h3v2H8v-2h3v-3.1A5 5 0 0 1 7 7V4zm-3 1h2v2a3 3 0 0 1-2-2zm16 0a3 3 0 0 1-2 2V5h2zM7 19h10v2H7z" />
@@ -239,35 +264,79 @@ function LeagueView({
             </span>
             <div>
               <div className="text-[10px] font-bold uppercase tracking-widest text-mut-2">Most titles</div>
-              <div className="font-semibold">{info.recordHolder}</div>
+              <div className="font-semibold">
+                <RecordHolder text={info.recordHolder} onTeam={onTeam} />
+              </div>
             </div>
-          </div>
+          </div>}
         </div>
       </section>
 
       {/* Tabs */}
-      <div className="mt-6 mb-4 inline-flex rounded-2xl border border-white/10 bg-ink-2/80 p-1">
-        {(["table", "clubs"] as Tab[]).map((t) => (
+      <div className="mt-6 mb-4 flex flex-wrap items-center gap-3">
+      <div className="no-scrollbar inline-flex max-w-full overflow-x-auto rounded-2xl border border-white/10 bg-ink-2/80 p-1">
+        {(["overview", "results", "fixtures", "table", "clubs"] as Tab[]).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`rounded-xl px-5 py-2 text-sm font-bold capitalize transition-colors ${tab === t ? "bg-volt text-ink" : "text-mut hover:text-fg"}`}
+            className={`shrink-0 rounded-xl px-4 py-2 text-sm font-bold transition-colors ${tab === t ? "bg-volt text-ink" : "text-mut hover:text-fg"}`}
           >
-            {t === "table" ? "Standings" : `Clubs (${clubs.length})`}
+            {t === "clubs" ? `Clubs (${clubs.length})` : TAB_LABEL[t]}
+            {t === "overview" && season.live.length > 0 && <span className="ml-1.5 rounded-full bg-live px-1.5 text-[10px] text-white">{season.live.length}</span>}
           </button>
         ))}
       </div>
+        {tab === "table" && table.live > 0 && (
+          <div className="inline-flex rounded-2xl border border-live/30 bg-live/[0.06] p-1">
+            {[
+              [true, `Live · ${table.live} in play`],
+              [false, "Official"],
+            ].map(([v, label]) => (
+              <button
+                key={String(v)}
+                onClick={() => setShowLive(v as boolean)}
+                className={`flex items-center gap-1.5 rounded-xl px-4 py-2 text-[13px] font-bold transition-colors ${showLive === v ? "bg-live text-white" : "text-mut hover:text-fg"}`}
+              >
+                {v && <span className="live-dot inline-block h-1.5 w-1.5 rounded-full bg-white" />}
+                {label as string}
+              </button>
+            ))}
+          </div>
+        )}
+        {tab === "table" && (
+          <span className="ml-auto">
+            <UpdatedAgo iso={table.updatedAt} />
+          </span>
+        )}
+      </div>
 
+      {tab === "overview" && (
+        <LeagueOverview data={season} onOpen={onOpen} onAllResults={() => setTab("results")} onAllFixtures={() => setTab("fixtures")} />
+      )}
+      {tab === "results" && (
+        <MatchList matches={season.results} onOpen={onOpen} loading={season.loading} empty="No results yet this season." />
+      )}
+      {tab === "fixtures" && (
+        <MatchList
+          matches={[...season.live, ...season.fixtures]}
+          onOpen={onOpen}
+          loading={season.loading}
+          empty="No more fixtures scheduled this season."
+        />
+      )}
       {tab === "table" ? (
         <div className="space-y-5">
           {groups.map((g, i) => (
-            <StandingsTable key={g.group ?? i} title={g.group} rows={g.rows} onTeam={onTeam} />
+            <StandingsTable key={g.group ?? i} title={g.group ?? undefined} rows={g.rows} onTeam={onTeam} onOpen={onOpen} />
           ))}
-          {groups.length === 0 && <p className="card rounded-2xl px-6 py-14 text-center text-sm text-mut">No table published yet.</p>}
+          {table.loading && <SkeletonRows count={10} height={48} label="Loading the table" />}
+          {!table.loading && groups.length === 0 && (
+            <p className="card rounded-2xl px-6 py-14 text-center text-sm text-mut">{table.error ?? "No table published yet."}</p>
+          )}
         </div>
-      ) : (
-        <ClubGrid league={info.name} clubs={clubs} onTeam={onTeam} />
-      )}
+      ) : tab === "clubs" ? (
+        <ClubGrid groups={table.official} clubs={clubs} onTeam={onTeam} />
+      ) : null}
     </div>
   )
 }
@@ -281,12 +350,10 @@ function HeroStat({ label, value }: { label: string; value: number | string }) {
   )
 }
 
-type Row = Standing & { note?: string; noteColor?: string }
-
-function StandingsTable({ title, rows, onTeam }: { title?: string; rows: Row[]; onTeam: (id: string) => void }) {
+function StandingsTable({ title, rows, onTeam, onOpen }: { title?: string; rows: TableRow[]; onTeam: (id: string) => void; onOpen: (matchId: string) => void }) {
   const [sort, setSort] = useState<SortKey>("pts")
 
-  // Keep official order for the default sort; positions always reflect the official table.
+  // Positions follow the table's own order (live or official), whatever column is sorted.
   const official = new Map(rows.map((r, i) => [r.team, i + 1]))
   const sorted = useMemo(() => {
     if (sort === "pts") return rows
@@ -334,23 +401,31 @@ function StandingsTable({ title, rows, onTeam }: { title?: string; rows: Row[]; 
                   {c.label}
                 </th>
               ))}
-              <th className="hidden px-5 py-3 text-right font-semibold lg:table-cell">Last 5</th>
+              <th className="hidden px-5 py-3 text-right font-semibold lg:table-cell" title="Last five league results, latest on the right">Last 5</th>
             </tr>
           </thead>
           <tbody>
             {sorted.map((s) => (
-              <tr key={s.team} className="group border-b border-white/[0.04] transition-colors last:border-0 hover:bg-white/[0.03]">
+              <tr
+                key={s.team}
+                onClick={() => onTeam(s.team)}
+                className={`group cursor-pointer border-b border-white/[0.04] transition-colors last:border-0 hover:bg-white/[0.04] ${s.live && s.live.status !== "FT" ? "bg-live/[0.05]" : ""}`}
+              >
                 <td className="py-3 pl-5">
                   <span className="flex items-center gap-2.5">
                     <span className="h-5 w-1 rounded-full" style={{ background: s.noteColor ?? "transparent" }} title={s.note} />
                     <span className="font-mono-num font-semibold text-mut">{official.get(s.team)}</span>
+                    <MoveArrow move={s.move} />
                   </span>
                 </td>
                 <td className="px-3 py-3">
-                  <button onClick={() => onTeam(s.team)} className="flex min-w-0 items-center gap-3 text-left">
-                    <Crest id={s.team} size={26} />
-                    <span className="truncate font-semibold text-fg transition-colors group-hover:text-volt">{teams[s.team]?.name}</span>
-                  </button>
+                  <span className="flex min-w-0 items-center gap-3">
+                    <button onClick={() => onTeam(s.team)} className="flex min-w-0 items-center gap-3 text-left">
+                      <Crest id={s.team} size={26} />
+                      <span className="truncate font-semibold text-fg transition-colors group-hover:text-volt">{teams[s.team]?.name}</span>
+                    </button>
+                    <LiveResultPill live={s.live} onOpen={onOpen} />
+                  </span>
                 </td>
                 {cols.map((c) => {
                   const v = c.key === "gd" ? gd(s) : c.key === "pts" ? pts(s) : s[c.key as "p" | "w" | "d" | "l" | "gf" | "ga"]
@@ -367,7 +442,7 @@ function StandingsTable({ title, rows, onTeam }: { title?: string; rows: Row[]; 
                 })}
                 <td className="hidden px-5 py-3 lg:table-cell">
                   <span className="flex justify-end">
-                    <FormPills form={s.form} />
+                    <FormPills form={s.form} details={s.formDetail} onOpen={onOpen} />
                   </span>
                 </td>
               </tr>
@@ -388,7 +463,7 @@ function StandingsTable({ title, rows, onTeam }: { title?: string; rows: Row[]; 
   )
 }
 
-function ClubGrid({ league, clubs, onTeam }: { league: string; clubs: string[]; onTeam: (id: string) => void }) {
+function ClubGrid({ groups, clubs, onTeam }: { groups: TableGroup[]; clubs: string[]; onTeam: (id: string) => void }) {
   const [q, setQ] = useState("")
   const list = clubs.filter((id) => teams[id]?.name.toLowerCase().includes(q.trim().toLowerCase())).sort((a, b) => teams[a].name.localeCompare(teams[b].name))
   return (
@@ -401,7 +476,7 @@ function ClubGrid({ league, clubs, onTeam }: { league: string; clubs: string[]; 
         {list.map((id) => {
           const t = teams[id]
           const d = detailsFor(id)
-          const pos = positionIn(league, id)
+          const pos = findInTable(groups, id)
           return (
             <button key={id} onClick={() => onTeam(id)} className="card card-hover group relative overflow-hidden rounded-2xl p-4 text-left">
               <span className="pointer-events-none absolute inset-x-0 top-0 h-1" style={{ background: `linear-gradient(90deg, ${t.color}, ${t.color2})` }} />
@@ -424,7 +499,7 @@ function ClubGrid({ league, clubs, onTeam }: { league: string; clubs: string[]; 
                   <span className="font-mono-num text-[12px] text-mut">
                     <span className="font-bold text-fg">{pts(pos.row)}</span> pts · {pos.row.w}-{pos.row.d}-{pos.row.l}
                   </span>
-                  <FormPills form={pos.row.form} size={16} />
+                  <FormPills form={pos.row.form} details={pos.row.formDetail} size={16} />
                 </div>
               )}
             </button>
@@ -451,5 +526,29 @@ function Arrow() {
         <path d="M7 17 17 7M9 7h8v8" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     </span>
+  )
+}
+
+/** "Most titles" as links to the club(s) where they're on PitchLive, e.g. "Celtic / Rangers". */
+function RecordHolder({ text, onTeam }: { text: string; onTeam: (id: string) => void }) {
+  const parts = text.split("/").map((p) => p.trim())
+  return (
+    <>
+      {parts.map((name, i) => {
+        const team = findTeamByName(name)
+        return (
+          <span key={name}>
+            {i > 0 && " / "}
+            {team ? (
+              <button onClick={() => onTeam(team.id)} className="hover:text-volt hover:underline">
+                {name}
+              </button>
+            ) : (
+              name
+            )}
+          </span>
+        )
+      })}
+    </>
   )
 }
