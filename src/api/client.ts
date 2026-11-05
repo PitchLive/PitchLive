@@ -147,9 +147,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 
 export const api = {
   me: () => request<{ user: User | null }>("GET", "/api/auth/me"),
-  login: (email: string, password: string) => request<{ user: User }>("POST", "/api/auth/login", { email, password }),
-  register: (email: string, password: string, displayName: string) =>
-    request<{ user: User }>("POST", "/api/auth/register", { email, password, displayName }),
+  /** Trade a Firebase ID token for the API session cookie. */
+  firebaseSignIn: (idToken: string, displayName?: string) => request<{ user: User }>("POST", "/api/auth/firebase", { idToken, displayName }),
   logout: () => request<void>("POST", "/api/auth/logout"),
 
   leagues: () => request<{ leagues: ApiLeagueSummary[] }>("GET", "/api/leagues"),

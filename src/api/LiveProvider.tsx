@@ -3,6 +3,7 @@ import { registerTeam, teams, type Match } from "../data"
 import { leagueByName, leagueBySlug, registerLeague } from "../leagueInfo"
 import { ApiError, api, liveSocketUrl, type ApiMatch, type ChatMessage, type LiveEvent, type MatchDetails, type User } from "./client"
 import { elapsedSeconds, readingSeconds } from "./clock"
+import { signOutOfFirebase, type FirebaseSignIn } from "./firebase"
 import { toLeagueTable, toSummary, type LeagueSummary, type LeagueTable } from "./tableData"
 
 /** Events for one match: chat messages, live details (stats, line-ups, commentary) and socket errors. */
@@ -27,8 +28,8 @@ type LiveState = {
   alerts: Alert[]
   unreadAlerts: number
   markAlertsRead: () => void
-  login: (email: string, password: string) => Promise<void>
-  register: (email: string, password: string, displayName: string) => Promise<void>
+  /** Finish a Firebase sign-in: the API checks the token and starts our session. */
+  completeSignIn: (signIn: FirebaseSignIn) => Promise<void>
   logout: () => Promise<void>
   watchMatch: (matchId: string, listener: ChatListener) => () => void
   sendChat: (matchId: string, body: string) => boolean
@@ -386,10 +387,9 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       alerts,
       unreadAlerts: alerts.filter((a) => !a.read).length,
       markAlertsRead: () => setAlerts((list) => (list.some((a) => !a.read) ? list.map((a) => ({ ...a, read: true })) : list)),
-      login: async (email, password) => setUser((await api.login(email, password)).user),
-      register: async (email, password, displayName) => setUser((await api.register(email, password, displayName)).user),
+      completeSignIn: async ({ idToken, displayName }) => setUser((await api.firebaseSignIn(idToken, displayName)).user),
       logout: async () => {
-        await api.logout().catch(() => {})
+        await Promise.all([api.logout().catch(() => {}), signOutOfFirebase()])
         setUser(null)
       },
       watchMatch,
