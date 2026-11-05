@@ -39,7 +39,7 @@ export async function fetchCountryLeagues(country: string, sport: string, signal
   const sourceCountry = COUNTRY_ALIASES[country] ?? country
   const sourceSport = activeSport === "Football" ? "Soccer" : activeSport
   const response = await fetch(
-    `https://www.thesportsdb.com/api/v1/json/3/search_all_leagues.php?c=${encodeURIComponent(sourceCountry)}&s=${encodeURIComponent(sourceSport)}`,
+    `https://www.thesportsdb.com/api/v1/json/123/search_all_leagues.php?c=${encodeURIComponent(sourceCountry)}&s=${encodeURIComponent(sourceSport)}`,
     { signal },
   )
   if (!response.ok) throw new Error("Unable to load leagues")
@@ -47,7 +47,7 @@ export async function fetchCountryLeagues(country: string, sport: string, signal
   let rawLeagues = (payload.countries ?? []) as RemoteLeague[]
   if (rawLeagues.length === 0 && activeSport === "Tennis") {
     const globalResponse = await fetch(
-      `https://www.thesportsdb.com/api/v1/json/3/search_all_leagues.php?s=${encodeURIComponent(sourceSport)}`,
+      `https://www.thesportsdb.com/api/v1/json/123/search_all_leagues.php?s=${encodeURIComponent(sourceSport)}`,
       { signal },
     )
     const globalPayload = globalResponse.ok ? await globalResponse.json() : { countries: [] }
@@ -133,7 +133,7 @@ export default function CountryExplorer({
     setLoadingClubs(true)
     setClubs([])
     setSelectedClub(null)
-    fetch(`https://www.thesportsdb.com/api/v1/json/3/lookup_all_teams.php?id=${leagueId}`, { signal: controller.signal })
+    fetch(`https://www.thesportsdb.com/api/v1/json/123/lookup_all_teams.php?id=${leagueId}`, { signal: controller.signal })
       .then((response) => {
         if (!response.ok) throw new Error("Unable to load teams")
         return response.json()

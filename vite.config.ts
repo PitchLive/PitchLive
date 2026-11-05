@@ -11,7 +11,8 @@ export default defineConfig(({ mode }) => {
   const emitSourcemaps = mode === 'development'
 
   return {
-    base: process.env.FIGMA_PUBLIC_URL ? `${process.env.FIGMA_PUBLIC_URL}/` : '/',
+    // BASE_PATH=/scores/ in production: the landing page owns / and the app lives under /scores/.
+    base: process.env.FIGMA_PUBLIC_URL ? `${process.env.FIGMA_PUBLIC_URL}/` : (process.env.BASE_PATH ?? '/'),
     build: {
       sourcemap: emitSourcemaps ? 'inline' : false,
       minify: !emitSourcemaps,
@@ -33,8 +34,13 @@ export default defineConfig(({ mode }) => {
       host: process.env.FIGMA_DEV_SERVER_HOST || '0.0.0.0',
       port: parseInt(process.env.PORT || '8443'),
       strictPort: true,
+      // Local API server (see server/README.md). Same-origin /api keeps session cookies first-party.
+      proxy: {
+        '/api': { target: process.env.API_URL || 'http://localhost:8787', changeOrigin: false, ws: true },
+      },
       watch: {
         ignored: [
+          '**/server/**',
           '**/.figma/**',
 ],
       },

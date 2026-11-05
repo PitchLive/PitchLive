@@ -1,37 +1,63 @@
-@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800;900&family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;500;600;700&display=swap');
 @import 'tailwindcss';
 
 @theme {
-  --font-display: 'Archivo', 'Inter', sans-serif;
+  --font-display: 'Barlow Condensed', 'Inter', sans-serif;
   --font-sans: 'Inter', system-ui, sans-serif;
   --font-mono: 'Geist Mono', ui-monospace, monospace;
 
-  --color-ink: #0d0e14;
-  --color-ink-2: #12131c;
-  --color-panel: #171826;
-  --color-panel-2: #1d1f30;
-  --color-line: #262838;
-  --color-line-soft: #1e2030;
-  --color-mut: #8a8fa3;
-  --color-mut-2: #5a5f74;
-  --color-fg: #eef0f7;
+  --color-ink: #07080d;
+  --color-ink-2: #0d0f17;
+  --color-panel: #12141f;
+  --color-panel-2: #1a1d2b;
+  --color-line: #232636;
+  --color-line-soft: #191b28;
+  --color-mut: #9298ad;
+  --color-mut-2: #848a9f; /* >= 4.5:1 on ink, panel and panel-2 */
+  --color-fg: #f2f4fa;
 
   --color-volt: #3dff88;
   --color-volt-dim: #26c469;
   --color-live: #ff3b5c;
   --color-amber: #ffb020;
-  --color-cobalt: #3d7bff;
+  --color-cobalt: #5b8dff; /* >= 4.5:1 as text on every surface */
 }
 
 @layer base {
+  /* Tailwind v4 resets buttons to the default cursor; clickable things should look clickable. */
+  button:not(:disabled),
+  [role="button"],
+  [role="link"],
+  summary {
+    cursor: pointer;
+  }
+  /* One visible focus ring for keyboard users everywhere (the browser default vanishes on this dark theme). */
+  :focus-visible {
+    outline: 2px solid var(--color-volt);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  /* Display headings: condensed type wants a touch of tracking. */
+  .font-display {
+    letter-spacing: 0.005em;
+  }
+
   html {
     background: var(--color-ink);
+    color-scheme: dark;
+    scroll-behavior: smooth;
     color: var(--color-fg);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
   }
   body {
     margin: 0;
+    min-height: 100vh;
+    background:
+      radial-gradient(1200px 600px at 85% -10%, color-mix(in srgb, var(--color-cobalt) 14%, transparent), transparent 60%),
+      radial-gradient(900px 500px at -10% 10%, color-mix(in srgb, var(--color-volt) 8%, transparent), transparent 60%),
+      var(--color-ink);
+    background-attachment: fixed;
   }
   ::selection {
     background: color-mix(in srgb, var(--color-volt) 35%, transparent);
@@ -58,6 +84,25 @@
   .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
+  }
+  .card {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--color-panel-2) 70%, transparent), color-mix(in srgb, var(--color-panel) 85%, transparent));
+    border: 1px solid color-mix(in srgb, white 7%, transparent);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, white 5%, transparent), 0 10px 30px -12px rgba(0, 0, 0, 0.6);
+  }
+  .card-hover {
+    transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), border-color 0.2s, box-shadow 0.25s;
+  }
+  .card-hover:hover {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--color-volt) 35%, transparent);
+    box-shadow: inset 0 1px 0 color-mix(in srgb, white 6%, transparent), 0 18px 40px -14px rgba(0, 0, 0, 0.75);
+  }
+  .text-gradient {
+    background: linear-gradient(90deg, var(--color-fg), color-mix(in srgb, var(--color-volt) 70%, var(--color-fg)));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
   .text-glow {
     text-shadow: 0 0 24px color-mix(in srgb, var(--color-volt) 55%, transparent);
@@ -89,10 +134,66 @@
   animation-play-state: paused;
 }
 
+@keyframes goal-flash {
+  0%, 100% { background-color: color-mix(in srgb, var(--color-live) 6%, transparent); }
+  50% { background-color: color-mix(in srgb, var(--color-live) 22%, transparent); }
+}
+.goal-flash {
+  animation: goal-flash 1.2s ease-in-out infinite;
+}
+
 @keyframes rise {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
 .rise {
   animation: rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Keyboard users can jump past the header straight to the page. */
+.skip-link {
+  position: fixed;
+  left: 12px;
+  top: 12px;
+  z-index: 100;
+  transform: translateY(-160%);
+  border-radius: 10px;
+  background: var(--color-volt);
+  color: var(--color-ink);
+  padding: 10px 14px;
+  font-weight: 700;
+  transition: transform 150ms ease-out;
+}
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+/* Respect "reduce motion": stop decorative movement, keep state changes instant and readable. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .ticker-track {
+    animation: none;
+  }
+  /* A goal is still marked, just without flashing. */
+  .goal-flash {
+    background-color: color-mix(in srgb, var(--color-live) 16%, transparent);
+  }
+}
+
+/* Phone menu panel slides in from the left (skipped under reduced motion). */
+@keyframes drawer-in {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+.drawer-in {
+  animation: drawer-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }

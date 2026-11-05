@@ -1,3 +1,6 @@
+import { leagueByName } from "../leagueInfo"
+import { LeagueLogo } from "./ui"
+
 const ALL = "All"
 
 export default function LeagueFilters({
@@ -16,12 +19,15 @@ export default function LeagueFilters({
         <button
           key={l}
           onClick={() => onChange(l)}
-          className={`shrink-0 rounded-full border px-4 py-1.5 text-[13px] font-semibold transition-colors ${
+          className={`flex shrink-0 items-center gap-2 rounded-full border py-1.5 text-[13px] font-semibold transition-colors ${
+            leagueByName[l] ? "pl-1.5 pr-4" : "px-4"
+          } ${
             active === l
               ? "border-volt bg-volt text-ink"
-              : "border-line bg-panel/50 text-mut hover:border-volt/40 hover:text-fg"
+              : "border-white/10 bg-white/[0.03] text-mut hover:border-volt/40 hover:text-fg"
           }`}
         >
+          {leagueByName[l] && <LeagueLogo src={leagueByName[l].logo} accent={leagueByName[l].accent} size={22} label="" />}
           {l}
         </button>
       ))}

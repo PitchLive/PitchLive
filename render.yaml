@@ -1,0 +1,27 @@
+# Render Blueprint for the PitchLive website. server.mjs serves the landing page at /,
+# the live-scores app at /scores/, and relays /api (and live updates) to the API service.
+services:
+  - type: web
+    name: pitchlive-web
+    runtime: node
+    plan: free # free instances sleep after 15 minutes idle; "starter" stays on
+    region: frankfurt
+    branch: main
+    autoDeploy: true
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: BASE_PATH
+        value: /scores/
+      - key: API_URL
+        value: https://pitchlive-api.onrender.com
+      # Firebase web app settings (public, but kept out of git; copy from .env).
+      - key: VITE_FIREBASE_API_KEY
+        sync: false
+      - key: VITE_FIREBASE_AUTH_DOMAIN
+        value: pitchlive-2d004.firebaseapp.com
+      - key: VITE_FIREBASE_PROJECT_ID
+        value: pitchlive-2d004
+      - key: VITE_FIREBASE_APP_ID
+        value: 1:913379876181:web:d890949ac56256328323dc

@@ -14,25 +14,17 @@ import tennisIcon from "../imports/sports/tennis.svg"
 import hockeyIcon from "../imports/sports/icehockey.svg"
 import volleyballIcon from "../imports/sports/volleyball.svg"
 import handballIcon from "../imports/sports/handball.svg"
-import moreIcon from "../imports/sports/more.svg"
-import premierLeague from "../imports/logos/english-premier-league.svg"
-import eflLogo from "../imports/logos/efl-championship.svg"
-import netherlandsFlag from "../imports/logos/netherlands.png"
-import cafLogo from "../imports/logos/caf.png"
-import uclLogo from "../imports/logos/uefa-champions-league.svg"
-import uelLogo from "../imports/logos/uefa-europa-league.svg"
-import superCupLogo from "../imports/logos/uefa-super-cup.svg"
-import cafChampionsLeagueLogo from "../imports/logos/caf-champions-league.svg"
-import bundesligaLogo from "../imports/logos/bundesliga.svg"
-import laLigaLogo from "../imports/logos/la-liga.svg"
-import ligue1Logo from "../imports/logos/ligue-1.svg"
-import serieALogo from "../imports/logos/serie-a.svg"
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { matches, teams, type Match } from "../data"
-import { Crest } from "../components/ui"
+import { teams, type Match } from "../data"
+import { useLive } from "../api/LiveProvider"
+import { useGoalFlash } from "../api/clock"
+import { leagueByName, leagueCatalog } from "../leagueInfo"
+import { Crest, Flag, LeagueLogo, LiveClock, SkeletonRows } from "../components/ui"
 import type { Page } from "../components/Navbar"
 import CountryExplorer, { type RemoteLeague } from "../components/CountryExplorer"
 import CountryRailItem from "../components/CountryRailItem"
+import SoccerCountryItem from "../components/SoccerCountryItem"
+import { api } from "../api/client"
 import { countries, countryFlag } from "../countries"
 
 type Filter = "all" | "live" | "finished" | "scheduled"
@@ -59,36 +51,6 @@ function LeagueIcon({ flag, size = 20 }: { flag: string; size?: number }) {
     </span>
   )
 }
-
-const LEAGUE_META: Record<string, { flag: string; country: string }> = {
-  "Premier League": { flag: premierLeague, country: "ENGLAND" },
-  "La Liga": { flag: laLigaLogo, country: "SPAIN" },
-  "Serie A": { flag: serieALogo, country: "ITALY" },
-  Bundesliga: { flag: bundesligaLogo, country: "GERMANY" },
-  "EFL Championship": { flag: eflLogo, country: "ENGLAND" },
-  "Ligue 1": { flag: ligue1Logo, country: "FRANCE" },
-  "UEFA Champions League": { flag: uclLogo, country: "EUROPE" },
-}
-
-// Pinned sidebar leagues (static, for the Flashscore-style rail).
-const PINNED = [
-  { name: "Premier League", flag: premierLeague },
-  { name: "MTN FA Cup", flag: "🇬🇭" },
-  { name: "Serie A", flag: serieALogo },
-  { name: "Eredivisie", flag: netherlandsFlag },
-  { name: "La Liga", flag: laLigaLogo },
-  { name: "Bundesliga", flag: bundesligaLogo },
-  { name: "Ligue 1", flag: ligue1Logo },
-  { name: "EFL Championship", flag: eflLogo },
-  { name: "Africa Cup of Nations", flag: cafLogo },
-  { name: "CAF Champions League", flag: cafChampionsLeagueLogo },
-  { name: "CAF Confederation Cup", flag: "world" },
-  { name: "UEFA Champions League", flag: uclLogo },
-  { name: "Europa League", flag: uelLogo },
-  { name: "UEFA Super Cup", flag: superCupLogo },
-  { name: "World Championship", flag: "world" },
-  { name: "World Cup Women", flag: "world" },
-]
 
 const SPORT_DEFAULT_COUNTRY: Record<string, string> = {
   Basketball: "United States",
@@ -179,7 +141,6 @@ const SPORTS = [
   { name: "Rugby", icon: rugbyIcon },
   { name: "Cricket", icon: cricketIcon },
   { name: "Baseball", icon: baseballIcon },
-  { name: "More", icon: moreIcon },
 ]
 
 type IconTone = "muted" | "active" | "amber" | "cobalt"
@@ -205,19 +166,56 @@ function SportIcon({ src, className = "", tone = "muted" }: { src: string; class
   )
 }
 
-export default function Scores({ onOpen, onTeam, go }: { onOpen: (id: string) => void; onTeam: (id: string) => void; go: (page: Page) => void }) {
+export default function Scores({
+  onOpen,
+  onTeam,
+  onLeague,
+  go,
+}: {
+  onOpen: (id: string) => void
+  onTeam: (id: string) => void
+  onLeague: (league: string) => void
+  go: (page: Page) => void
+}) {
   const [filter, setFilter] = useState<Filter>("all")
   const [pinned, setPinned] = useState<string | null>(null)
   const [country, setCountry] = useState<string | null>(null)
   const [expandedCountry, setExpandedCountry] = useState<string | null>(null)
+  const [railOpen, setRailOpen] = useState(false)
+  useEffect(() => {
+    if (!railOpen) return
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setRailOpen(false)
+    document.addEventListener("keydown", onKey)
+    document.body.style.overflow = "hidden"
+    return () => {
+      document.removeEventListener("keydown", onKey)
+      document.body.style.overflow = ""
+    }
+  }, [railOpen])
+  // How many competitions we cover per country (soccer), for the counts in the menu.
+  const [coverage, setCoverage] = useState<Map<string, number> | null>(null)
+  useEffect(() => {
+    api
+      .countries()
+      .then(({ countries: list }) => setCoverage(new Map(list.map((c) => [c.country, c.leagues]))))
+      .catch(() => setCoverage(new Map()))
+  }, [])
   const [selectedLeagueId, setSelectedLeagueId] = useState<string | null>(null)
   const [pinnedCountryLeagues, setPinnedCountryLeagues] = useState<PinnedCountryLeague[]>([])
   const [dayOffset, setDayOffset] = useState(0)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
-  const [favs, setFavs] = useState<Record<string, boolean>>({})
-  const [myTeams, setMyTeams] = useState<string[]>(["ars", "liv"])
+  const [favs, setFavs] = useState<Record<string, boolean>>(readStarred)
+  useEffect(() => writeStarred(favs), [favs])
+  const { matches, matchesLoading, user, favorites, toggleFavorite } = useLive()
+  const myTeams = [...favorites].filter((id) => teams[id])
+  const dayKey = new Date(Date.now() + dayOffset * 86_400_000).toDateString()
+  const onSelectedDay = (m: Match) => (m.kickoffAt ? new Date(m.kickoffAt).toDateString() === dayKey : dayOffset === 0)
+  const follow = async (id: string) => {
+    if ((await toggleFavorite(id)) === "signin") go("signin")
+  }
   const [picking, setPicking] = useState(false)
   const [sport, setSport] = useState("Football")
+  const soccer = sport === "Football" || sport === "Favorites"
   const [countryQuery, setCountryQuery] = useState("")
   const sportsRef = useRef<HTMLDivElement>(null)
   const [sportScroll, setSportScroll] = useState({ left: false, right: true })
@@ -244,9 +242,10 @@ export default function Scores({ onOpen, onTeam, go }: { onOpen: (id: string) =>
   }, [])
 
   const grouped = useMemo(() => {
-    const list = (dayOffset === 0 ? matches : [])
+    const list = matches
+      .filter(onSelectedDay)
       .filter((m) => (pinned ? m.league === pinned : true))
-      .filter((m) => (sport === "Favorites" ? favs[m.id] : true))
+      .filter((m) => (sport === "Favorites" ? favs[m.id] || favorites.has(m.home) || favorites.has(m.away) : true))
       .filter((m) => {
         if (filter === "live") return m.status === "LIVE" || m.status === "HT"
         if (filter === "finished") return m.status === "FT"
@@ -259,7 +258,7 @@ export default function Scores({ onOpen, onTeam, go }: { onOpen: (id: string) =>
       map.get(m.league)!.push(m)
     }
     return [...map.entries()]
-  }, [filter, pinned, dayOffset, sport, favs])
+  }, [matches, filter, pinned, dayKey, sport, favs, favorites])
 
   const liveCount = matches.filter((m) => m.status === "LIVE" || m.status === "HT").length
   const selectedDate = new Date()
@@ -270,6 +269,203 @@ export default function Scores({ onOpen, onTeam, go }: { onOpen: (id: string) =>
   const explorerCountry = country ?? SPORT_DEFAULT_COUNTRY[sport] ?? null
   const selectedCountry = countries.find((item) => item.name === explorerCountry)
   const sportLeaguePins = SPORT_LEAGUE_PINS[sport]
+
+  // Live now, leagues, my teams and countries: a column on desktop, a slide-in panel on phones.
+  const rail = (
+    <>
+      {!sportLeaguePins && <LiveNow matches={matches} onOpen={onOpen} />}
+      <h2 className="mb-2 flex items-center gap-2 px-2.5 text-[11px] font-bold uppercase tracking-widest text-mut-2">
+        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-volt" fill="currentColor">
+          <path d="M16 3v2l-2 2v4l4 3v2h-5v5l-1 2-1-2v-5H5v-2l4-3V7L7 5V3z" />
+        </svg>
+        {sportLeaguePins ? "Pinned Leagues" : "Leagues"}
+      </h2>
+      <nav className="space-y-px">
+        {pinnedCountryLeagues
+          .filter((item) => item.sport === sport)
+          .map((item) => {
+            const countryInfo = countries.find((entry) => entry.name === item.country)
+            return (
+              <div key={`${item.sport}-${item.country}-${item.league.idLeague}`} className="group flex items-center rounded-lg hover:bg-panel/60">
+                <button
+                  onClick={() => {
+                    setCountry(item.country)
+                    setSelectedLeagueId(item.league.idLeague)
+                    setPinned(null)
+                  }}
+                  className="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-1.5 text-left text-[13px] font-medium text-fg/90"
+                >
+                  <LeagueIcon flag={countryInfo ? countryFlag(countryInfo.code) : "world"} />
+                  <span className="truncate">{item.league.strLeague}</span>
+                </button>
+                <button
+                  onClick={() => setPinnedCountryLeagues((items) => items.filter((pin) => !(pin.sport === item.sport && pin.country === item.country && pin.league.idLeague === item.league.idLeague)))}
+                  className="mr-1 grid h-9 w-9 place-items-center text-volt opacity-70 hover:opacity-100"
+                  aria-label={`Unpin ${item.league.strLeague}`}
+                >
+                  <PinIcon filled />
+                </button>
+              </div>
+            )
+          })}
+        {!sportLeaguePins && (
+          <RailButton active={pinned === null && country === null} onClick={() => { setPinned(null); setCountry(null) }}>
+            <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-md bg-volt/15 text-[12px] text-volt ring-1 ring-volt/30">★</span>
+            <span className="truncate">All competitions</span>
+          </RailButton>
+        )}
+        {sportLeaguePins
+          ? sportLeaguePins.map((item) => {
+              const countryInfo = countries.find((entry) => entry.name === item.country)
+              return (
+                <RailButton
+                  key={item.name}
+                  active={explorerCountry === item.country}
+                  onClick={() => {
+                    setCountry(item.country)
+                    setSelectedLeagueId(null)
+                    setPinned(null)
+                  }}
+                >
+                  <LeagueIcon flag={countryInfo ? countryFlag(countryInfo.code) : "world"} />
+                  <span className="truncate">{item.name}</span>
+                </RailButton>
+              )
+            })
+          : leagueCatalog.map((l) => {
+              const live = matches.filter((m) => m.league === l.name && (m.status === "LIVE" || m.status === "HT")).length
+              const onDay = matches.filter((m) => m.league === l.name && onSelectedDay(m)).length
+              return (
+                <RailButton key={l.name} onClick={() => onLeague(l.name)}>
+                  <LeagueLogo src={l.logo} accent={l.accent} size={20} label="" />
+                  <span className="min-w-0 flex-1 truncate">{l.name}</span>
+                  {live > 0 ? (
+                    <span className="flex shrink-0 items-center gap-1 rounded-full bg-live/15 px-1.5 text-[10px] font-bold text-live">
+                      <span className="live-dot inline-block h-1 w-1 rounded-full bg-live" />
+                      {live}
+                    </span>
+                  ) : onDay > 0 ? (
+                    <span className="shrink-0 text-[10px] font-semibold text-mut-2">{onDay}</span>
+                  ) : null}
+                </RailButton>
+              )
+            })}
+      </nav>
+
+      {(sport === "Football" || sport === "Favorites") && (
+        <>
+          <RailHeading icon={<SportIcon src={starIcon} tone="amber" className="h-4 w-4" />}>
+            My Teams
+          </RailHeading>
+          <div className="space-y-px">
+            {myTeams.map((id) => (
+              <div key={id} className="group flex items-center rounded-lg pr-1 hover:bg-panel/60">
+                <button onClick={() => onTeam(id)} className="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-1.5 text-left text-[13px] font-medium text-fg/90">
+                  <Crest id={id} size={18} />
+                  <span className="truncate">{teams[id].name}</span>
+                </button>
+                <button
+                  onClick={() => follow(id)}
+                  className="grid h-9 w-9 place-items-center rounded text-mut-2 opacity-0 transition-opacity hover:text-live focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100"
+                  aria-label={`Remove ${teams[id].name}`}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            {!user && (
+              <button onClick={() => go("signin")} className="w-full rounded-lg px-2.5 py-1.5 text-left text-[12px] text-mut hover:bg-panel/60 hover:text-fg">
+                Sign in to follow clubs
+              </button>
+            )}
+            {user && <button
+              onClick={() => setPicking((v) => !v)}
+              className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12px] font-extrabold uppercase tracking-[0.12em] text-live hover:bg-live/10"
+            >
+              <span className={`grid h-[22px] w-[22px] place-items-center text-lg leading-none transition-transform ${picking ? "rotate-45" : ""}`}>+</span>
+              Add the team
+            </button>}
+            {user && picking && (
+              <div className="mt-1 max-h-56 overflow-y-auto rounded-xl border border-line bg-ink-2 p-1">
+                {Object.values(teams)
+                  .filter((t) => !myTeams.includes(t.id))
+                  .sort((x, y) => x.name.localeCompare(y.name))
+                  .map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => follow(t.id)}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-[12.5px] text-fg/85 hover:bg-panel hover:text-fg"
+                    >
+                      <Crest id={t.id} size={20} />
+                      <span className="truncate">{t.name}</span>
+                    </button>
+                  ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      <h3 className="mb-1.5 mt-7 border-b border-line px-2.5 pb-2.5 text-[12px] font-extrabold uppercase tracking-[0.14em] text-fg">Countries</h3>
+      <input
+        value={countryQuery}
+        onChange={(event) => setCountryQuery(event.target.value)}
+        placeholder="Find a country…"
+        className="mb-2 w-full rounded-lg border border-line bg-ink-2 px-2.5 py-2 text-[12px] text-fg placeholder:text-mut-2 focus:border-volt/40 focus:outline-none"
+      />
+      <div className="space-y-px">
+        {soccer && "world international".includes(countryQuery.trim().toLowerCase()) && (
+          <SoccerCountryItem
+            name="World"
+            flag={<WorldGlobe />}
+            covered={coverage?.get("World")}
+            expanded={expandedCountry === "World"}
+            onToggle={() => setExpandedCountry((current) => (current === "World" ? null : "World"))}
+            onLeague={onLeague}
+          />
+        )}
+        {soccer && visibleCountries.map((item) => (
+          <SoccerCountryItem
+            key={item.code}
+            name={item.name}
+            flag={<Flag code={item.code} />}
+            covered={coverage ? (coverage.get(item.name) ?? 0) : undefined}
+            expanded={expandedCountry === item.name}
+            onToggle={() => setExpandedCountry((current) => (current === item.name ? null : item.name))}
+            onLeague={onLeague}
+          />
+        ))}
+        {!soccer && visibleCountries.map((item) => (
+          <CountryRailItem
+            key={item.code}
+            name={item.name}
+            flag={<Flag code={item.code} />}
+            sport={sport}
+            expanded={expandedCountry === item.name}
+            activeLeagueId={country === item.name ? selectedLeagueId : null}
+            pinnedIds={new Set(
+              pinnedCountryLeagues
+                .filter((pin) => pin.sport === sport && pin.country === item.name)
+                .map((pin) => pin.league.idLeague),
+            )}
+            onToggle={() => setExpandedCountry((current) => current === item.name ? null : item.name)}
+            onSelect={(league) => {
+              setCountry(item.name)
+              setSelectedLeagueId(league.idLeague)
+              setPinned(null)
+            }}
+            onPin={(league) => {
+              setPinnedCountryLeagues((items) => {
+                const exists = items.some((pin) => pin.sport === sport && pin.country === item.name && pin.league.idLeague === league.idLeague)
+                if (exists) return items.filter((pin) => !(pin.sport === sport && pin.country === item.name && pin.league.idLeague === league.idLeague))
+                return [...items, { country: item.name, sport, league }]
+              })
+            }}
+          />
+        ))}
+      </div>
+    </>
+  )
 
   return (
     <div className="mx-auto max-w-[1400px] px-4 py-5 sm:px-6">
@@ -327,171 +523,7 @@ export default function Scores({ onOpen, onTeam, go }: { onOpen: (id: string) =>
       <div className="grid gap-6 lg:grid-cols-[236px_1fr]">
         {/* Pinned leagues rail */}
         <aside className="hidden lg:block">
-          <div className="no-scrollbar sticky top-32 max-h-[calc(100vh-9rem)] overflow-y-auto pb-8">
-            <h2 className="mb-2 flex items-center gap-2 px-2.5 text-[11px] font-bold uppercase tracking-widest text-mut-2">
-              <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-volt" fill="currentColor">
-                <path d="M16 3v2l-2 2v4l4 3v2h-5v5l-1 2-1-2v-5H5v-2l4-3V7L7 5V3z" />
-              </svg>
-              Pinned Leagues
-            </h2>
-            <nav className="space-y-px">
-              {pinnedCountryLeagues
-                .filter((item) => item.sport === sport)
-                .map((item) => {
-                  const countryInfo = countries.find((entry) => entry.name === item.country)
-                  return (
-                    <div key={`${item.sport}-${item.country}-${item.league.idLeague}`} className="group flex items-center rounded-lg hover:bg-panel/60">
-                      <button
-                        onClick={() => {
-                          setCountry(item.country)
-                          setSelectedLeagueId(item.league.idLeague)
-                          setPinned(null)
-                        }}
-                        className="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-1.5 text-left text-[13px] font-medium text-fg/90"
-                      >
-                        <LeagueIcon flag={countryInfo ? countryFlag(countryInfo.code) : "world"} />
-                        <span className="truncate">{item.league.strLeague}</span>
-                      </button>
-                      <button
-                        onClick={() => setPinnedCountryLeagues((items) => items.filter((pin) => !(pin.sport === item.sport && pin.country === item.country && pin.league.idLeague === item.league.idLeague)))}
-                        className="mr-1 grid h-7 w-7 place-items-center text-volt opacity-70 hover:opacity-100"
-                        aria-label={`Unpin ${item.league.strLeague}`}
-                      >
-                        <PinIcon filled />
-                      </button>
-                    </div>
-                  )
-                })}
-              {!sportLeaguePins && (
-                <RailButton active={pinned === null && country === null} onClick={() => { setPinned(null); setCountry(null) }}>
-                  <span className="grid h-[22px] w-[22px] shrink-0 place-items-center rounded-md bg-volt/15 text-[12px] text-volt ring-1 ring-volt/30">★</span>
-                  <span className="truncate">All competitions</span>
-                </RailButton>
-              )}
-              {sportLeaguePins
-                ? sportLeaguePins.map((item) => {
-                    const countryInfo = countries.find((entry) => entry.name === item.country)
-                    return (
-                      <RailButton
-                        key={item.name}
-                        active={explorerCountry === item.country}
-                        onClick={() => {
-                          setCountry(item.country)
-                          setSelectedLeagueId(null)
-                          setPinned(null)
-                        }}
-                      >
-                        <LeagueIcon flag={countryInfo ? countryFlag(countryInfo.code) : "world"} />
-                        <span className="truncate">{item.name}</span>
-                      </RailButton>
-                    )
-                  })
-                : PINNED.map((l) => {
-                    const selectable = matches.some((m) => m.league === l.name)
-                    return (
-                      <RailButton key={l.name} active={pinned === l.name} dim={!selectable} onClick={() => { setPinned(l.name); setCountry(null) }}>
-                        <LeagueIcon flag={l.flag} />
-                        <span className="truncate">{l.name}</span>
-                      </RailButton>
-                    )
-                  })}
-            </nav>
-
-            {(sport === "Football" || sport === "Favorites") && (
-              <>
-                <RailHeading icon={<SportIcon src={starIcon} tone="amber" className="h-4 w-4" />}>
-                  My Teams
-                </RailHeading>
-                <div className="space-y-px">
-                  {myTeams.map((id) => (
-                    <div key={id} className="group flex items-center rounded-lg pr-1 hover:bg-panel/60">
-                      <button onClick={() => onTeam(id)} className="flex min-w-0 flex-1 items-center gap-2.5 px-2.5 py-1.5 text-left text-[13px] font-medium text-fg/90">
-                        <Crest id={id} size={18} />
-                        <span className="truncate">{teams[id].name}</span>
-                      </button>
-                      <button
-                        onClick={() => setMyTeams((t) => t.filter((x) => x !== id))}
-                        className="grid h-6 w-6 place-items-center rounded text-mut-2 opacity-0 transition-opacity hover:text-live group-hover:opacity-100"
-                        aria-label={`Remove ${teams[id].name}`}
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                  <button
-                    onClick={() => setPicking((v) => !v)}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[12px] font-extrabold uppercase tracking-[0.12em] text-live hover:bg-live/10"
-                  >
-                    <span className={`grid h-[22px] w-[22px] place-items-center text-lg leading-none transition-transform ${picking ? "rotate-45" : ""}`}>+</span>
-                    Add the team
-                  </button>
-                  {picking && (
-                    <div className="mt-1 max-h-56 overflow-y-auto rounded-xl border border-line bg-ink-2 p-1">
-                      {Object.values(teams)
-                        .filter((t) => !myTeams.includes(t.id))
-                        .sort((x, y) => x.name.localeCompare(y.name))
-                        .map((t) => (
-                          <button
-                            key={t.id}
-                            onClick={() => setMyTeams((m) => [...m, t.id])}
-                            className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-[12.5px] text-fg/85 hover:bg-panel hover:text-fg"
-                          >
-                            <Crest id={t.id} size={20} />
-                            <span className="truncate">{t.name}</span>
-                          </button>
-                        ))}
-                    </div>
-                  )}
-                </div>
-
-                <RailHeading icon={<svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M9 6h12M9 12h12M9 18h12" /><circle cx="4" cy="6" r="1.2" /><circle cx="4" cy="12" r="1.2" /><circle cx="4" cy="18" r="1.2" /></svg>}>
-                  Rankings
-                </RailHeading>
-                <RailButton onClick={() => go("competitions")}>
-                  <LeagueIcon flag="world" />
-                  <span className="truncate">FIFA</span>
-                </RailButton>
-              </>
-            )}
-
-            <h3 className="mb-1.5 mt-7 border-b border-line px-2.5 pb-2.5 text-[12px] font-extrabold uppercase tracking-[0.14em] text-fg">Countries</h3>
-            <input
-              value={countryQuery}
-              onChange={(event) => setCountryQuery(event.target.value)}
-              placeholder="Find a country…"
-              className="mb-2 w-full rounded-lg border border-line bg-ink-2 px-2.5 py-2 text-[12px] text-fg placeholder:text-mut-2 focus:border-volt/40 focus:outline-none"
-            />
-            <div className="space-y-px">
-              {visibleCountries.map((item) => (
-                <CountryRailItem
-                  key={item.code}
-                  name={item.name}
-                  flag={countryFlag(item.code)}
-                  sport={sport}
-                  expanded={expandedCountry === item.name}
-                  activeLeagueId={country === item.name ? selectedLeagueId : null}
-                  pinnedIds={new Set(
-                    pinnedCountryLeagues
-                      .filter((pin) => pin.sport === sport && pin.country === item.name)
-                      .map((pin) => pin.league.idLeague),
-                  )}
-                  onToggle={() => setExpandedCountry((current) => current === item.name ? null : item.name)}
-                  onSelect={(league) => {
-                    setCountry(item.name)
-                    setSelectedLeagueId(league.idLeague)
-                    setPinned(null)
-                  }}
-                  onPin={(league) => {
-                    setPinnedCountryLeagues((items) => {
-                      const exists = items.some((pin) => pin.sport === sport && pin.country === item.name && pin.league.idLeague === league.idLeague)
-                      if (exists) return items.filter((pin) => !(pin.sport === sport && pin.country === item.name && pin.league.idLeague === league.idLeague))
-                      return [...items, { country: item.name, sport, league }]
-                    })
-                  }}
-                />
-              ))}
-            </div>
-          </div>
+          <div className="no-scrollbar sticky top-32 max-h-[calc(100vh-9rem)] overflow-y-auto pb-8">{rail}</div>
         </aside>
 
         {/* Match feed */}
@@ -510,6 +542,21 @@ export default function Scores({ onOpen, onTeam, go }: { onOpen: (id: string) =>
             />
           ) : (
             <>
+          <button
+            onClick={() => setRailOpen(true)}
+            aria-haspopup="dialog"
+            className="mb-3 flex min-h-11 w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 text-left text-sm font-semibold text-fg lg:hidden"
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4 text-volt" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+              <path d="M4 6h16M4 12h10M4 18h7" />
+            </svg>
+            Leagues &amp; countries
+            {liveCount > 0 && (
+              <span className="ml-auto flex items-center gap-1.5 rounded-full bg-live/15 px-2 py-0.5 text-[11px] font-bold text-live">
+                <span className="live-dot inline-block h-1.5 w-1.5 rounded-full bg-live" /> {liveCount} live
+              </span>
+            )}
+          </button>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap gap-1.5">
               {(["all", "live", "finished", "scheduled"] as Filter[]).map((f) => (
@@ -534,31 +581,40 @@ export default function Scores({ onOpen, onTeam, go }: { onOpen: (id: string) =>
               ))}
             </div>
             <div className="flex items-center gap-1 rounded-lg border border-line bg-panel/60 px-1 py-1 text-[13px]">
-              <button onClick={() => setDayOffset((day) => day - 1)} className="grid h-7 w-7 place-items-center rounded text-mut hover:text-fg" aria-label="Previous day">‹</button>
+              <button onClick={() => setDayOffset((day) => day - 1)} className="grid h-9 w-9 place-items-center rounded-lg text-lg text-mut hover:bg-white/[0.06] hover:text-fg" aria-label="Previous day">‹</button>
               <span className="flex items-center gap-2 px-2 font-semibold text-fg">
                 <SportIcon src={calendarIcon} tone="active" className="h-4 w-4" />
                 {dateLabel} {relativeDay}
               </span>
-              <button onClick={() => setDayOffset((day) => day + 1)} className="grid h-7 w-7 place-items-center rounded text-mut hover:text-fg" aria-label="Next day">›</button>
+              <button onClick={() => setDayOffset((day) => day + 1)} className="grid h-9 w-9 place-items-center rounded-lg text-lg text-mut hover:bg-white/[0.06] hover:text-fg" aria-label="Next day">›</button>
             </div>
           </div>
 
           <div className="space-y-3">
             {(sport === "Football" || sport === "Favorites") && grouped.map(([lg, ms]) => {
-              const meta = LEAGUE_META[lg] ?? { flag: "⚽", country: "" }
+              const info = leagueByName[lg]
+              const meta = info?.logo ? { flag: info.logo, country: info.country.toUpperCase() } : { flag: "⚽", country: "" }
               const isCollapsed = collapsed[lg]
               return (
                 <section key={lg} className="overflow-hidden rounded-2xl border border-line bg-panel/50 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.6)] backdrop-blur-sm">
                   <div className="flex items-center justify-between gap-2 border-b border-line bg-gradient-to-r from-panel-2 to-ink-2/70 px-3.5 py-3">
-                    <div className="flex min-w-0 items-center gap-2.5">
+                    <button
+                      onClick={() => info && onLeague(lg)}
+                      disabled={!info}
+                      className="flex min-w-0 items-center gap-2.5 text-left enabled:hover:text-volt"
+                    >
                       <LeagueIcon flag={meta.flag} size={22} />
                       <span className="truncate text-[13px] font-bold">
                         {meta.country && <span className="text-mut">{meta.country}: </span>}
                         {lg}
                       </span>
-                    </div>
+                    </button>
                     <div className="flex items-center gap-3">
-                      <button onClick={() => go("competitions")} className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] font-semibold text-cobalt hover:bg-cobalt/10">
+                      <button
+                        onClick={() => info && onLeague(lg)}
+                        disabled={!info}
+                        className="flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] font-semibold text-cobalt hover:bg-cobalt/10 disabled:hidden"
+                      >
                         <SportIcon src={scoreboardIcon} tone="cobalt" className="h-3.5 w-3.5" />
                         Standings
                       </button>
@@ -581,7 +637,6 @@ export default function Scores({ onOpen, onTeam, go }: { onOpen: (id: string) =>
                         fav={!!favs[m.id]}
                         onFav={() => setFavs((f) => ({ ...f, [m.id]: !f[m.id] }))}
                         onOpen={onOpen}
-                        onTeam={onTeam}
                       />
                     ))}
                 </section>
@@ -590,10 +645,11 @@ export default function Scores({ onOpen, onTeam, go }: { onOpen: (id: string) =>
             {sport !== "Football" && (sport !== "Favorites" || grouped.length === 0) && (
               <div className="grid place-items-center gap-3 rounded-2xl border border-line bg-panel/50 py-16 text-center">
                 <SportIcon src={SPORTS.find((x) => x.name === sport)!.icon} className="h-10 w-10" />
-                <p className="text-mut">{sport === "Favorites" ? "Star a match to see it here." : `${sport} coverage is coming soon.`}</p>
+                <p className="text-mut">{sport === "Favorites" ? "Star a match or follow a club to see it here." : `${sport} coverage is coming soon.`}</p>
               </div>
             )}
-            {sport === "Football" && grouped.length === 0 && (
+            {sport === "Football" && matchesLoading && <SkeletonRows count={8} height={56} label="Loading matches" />}
+            {sport === "Football" && !matchesLoading && grouped.length === 0 && (
               <p className="rounded-2xl border border-line bg-panel/50 py-16 text-center text-mut">
                 {dayOffset !== 0 ? `No tracked matches on ${dateLabel}.` : "No matches for this filter."}
               </p>
@@ -603,58 +659,77 @@ export default function Scores({ onOpen, onTeam, go }: { onOpen: (id: string) =>
           )}
         </div>
       </div>
+      {railOpen && (
+        <div className="fixed inset-0 z-[60] lg:hidden" role="dialog" aria-modal="true" aria-label="Leagues and countries">
+          <button aria-label="Close leagues and countries" onClick={() => setRailOpen(false)} className="absolute inset-0 bg-black/60" />
+          <div className="drawer-in no-scrollbar absolute inset-y-0 left-0 w-[86%] max-w-[340px] overflow-y-auto border-r border-white/10 bg-ink-2 px-3 pb-10 pt-3 shadow-2xl">
+            <div className="mb-3 flex items-center justify-between px-1">
+              <span className="font-display text-lg font-bold">Leagues &amp; countries</span>
+              <button onClick={() => setRailOpen(false)} aria-label="Close" className="grid h-11 w-11 place-items-center rounded-full text-mut hover:bg-white/[0.06] hover:text-fg">
+                <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                  <path d="M6 6l12 12M18 6 6 18" />
+                </svg>
+              </button>
+            </div>
+            {rail}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-function MatchRow({ m, fav, onFav, onOpen, onTeam }: { m: Match; fav: boolean; onFav: () => void; onOpen: (id: string) => void; onTeam: (id: string) => void }) {
+function MatchRow({ m, fav, onFav, onOpen }: { m: Match; fav: boolean; onFav: () => void; onOpen: (id: string) => void }) {
   const live = m.status === "LIVE" || m.status === "HT"
+  const flash = useGoalFlash(m)
   const done = m.status === "FT"
-  const timeLabel = m.status === "UPCOMING" ? m.kickoff : m.status === "HT" ? "HT" : live ? `${m.minute}'` : "FT"
+  const timeLabel = live ? <LiveClock m={m} /> : m.status === "UPCOMING" ? m.kickoff : m.status === "POSTPONED" ? "PPD" : "FT"
 
   return (
-    <div className={`group relative flex items-stretch border-t border-line-soft transition-colors first:border-t-0 hover:bg-panel-2/60 ${live ? "bg-live/[0.03]" : ""}`}>
+    <div
+      role="link"
+      tabIndex={0}
+      onClick={() => onOpen(m.id)}
+      onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), onOpen(m.id))}
+      aria-label={`${teams[m.home]?.name} vs ${teams[m.away]?.name}: match details`}
+      className={`group relative flex cursor-pointer items-stretch border-t border-line-soft outline-none transition-colors first:border-t-0 hover:bg-panel-2/60 focus-visible:bg-panel-2/60 ${flash ? "goal-flash" : live ? "bg-live/[0.03]" : ""}`}
+    >
       {live && <span className="absolute inset-y-0 left-0 w-0.5 bg-live" />}
-      <button onClick={onFav} className={`grid w-9 shrink-0 place-items-center transition-colors ${fav ? "text-amber" : "text-mut-2/50 hover:text-amber"}`} aria-label={fav ? "Remove favourite" : "Favourite"} aria-pressed={fav}>
+      <button
+        onClick={(e) => {
+          e.stopPropagation()
+          onFav()
+        }}
+        className={`grid w-9 shrink-0 place-items-center transition-colors ${fav ? "text-amber" : "text-mut-2/50 hover:text-amber"}`} aria-label={fav ? "Remove favourite" : "Favourite"} aria-pressed={fav}>
         <SportIcon src={starIcon} tone={fav ? "amber" : "muted"} className={`h-3.5 w-3.5 transition-transform ${fav ? "scale-110" : ""}`} />
       </button>
 
-      <button
-        onClick={() => onOpen(m.id)}
-        className={`grid w-14 shrink-0 place-items-center text-center font-mono-num text-[12px] font-semibold ${live ? "text-live" : "text-mut"}`}
-        aria-label="Match details"
-      >
-        {timeLabel}
-      </button>
+      <span className={`grid w-14 shrink-0 place-items-center text-center font-mono-num text-[12px] font-semibold ${live ? "text-live" : "text-mut"}`}>{timeLabel}</span>
 
       <div className="flex min-w-0 flex-1 flex-col justify-center gap-1.5 py-2.5 pr-3">
-        <ScoreLine id={m.home} score={m.homeScore} show={!(m.status === "UPCOMING")} win={done && m.homeScore > m.awayScore} live={live} onTeam={onTeam} />
-        <ScoreLine id={m.away} score={m.awayScore} show={!(m.status === "UPCOMING")} win={done && m.awayScore > m.homeScore} live={live} onTeam={onTeam} />
+        <ScoreLine id={m.home} score={m.homeScore} show={!(m.status === "UPCOMING")} win={done && m.homeScore > m.awayScore} live={live} scored={flash === "home"} />
+        <ScoreLine id={m.away} score={m.awayScore} show={!(m.status === "UPCOMING")} win={done && m.awayScore > m.homeScore} live={live} scored={flash === "away"} />
       </div>
 
-      <button
-        onClick={() => onOpen(m.id)}
-        className="grid w-11 shrink-0 place-items-center border-l border-line-soft text-mut-2 group-hover:text-volt"
-        aria-label={live ? "Watch live" : "Match info"}
-      >
+      <span className="grid w-11 shrink-0 place-items-center border-l border-line-soft text-mut-2 group-hover:text-volt" aria-hidden>
         <span className={`grid h-7 w-7 place-items-center rounded-full transition-colors ${live ? "bg-volt/15 text-volt" : "group-hover:bg-panel"}`}>
           <SportIcon src={live ? playIcon : infoIcon} tone={live ? "active" : "muted"} className="h-3.5 w-3.5" />
         </span>
-      </button>
+      </span>
     </div>
   )
 }
 
-function ScoreLine({ id, score, show, win, live, onTeam }: { id: string; score: number; show: boolean; win: boolean; live: boolean; onTeam: (id: string) => void }) {
+function ScoreLine({ id, score, show, win, live, scored = false }: { id: string; score: number; show: boolean; win: boolean; live: boolean; scored?: boolean }) {
   const t = teams[id]
   return (
     <div className="flex items-center gap-2">
-      <button onClick={() => onTeam(id)} className="flex min-w-0 flex-1 items-center gap-2.5 text-left hover:text-volt">
+      <span className="flex min-w-0 flex-1 items-center gap-2.5">
         <Crest id={id} size={18} />
-        <span className={`flex-1 truncate text-[13px] ${win ? "font-bold text-fg" : "font-medium text-fg/85"}`}>{t.name}</span>
-      </button>
+        <span className={`flex-1 truncate text-[13px] ${scored ? "font-bold text-live" : win ? "font-bold text-fg" : "font-medium text-fg/85"}`}>{t?.name ?? id}</span>
+      </span>
       {show && (
-        <span className={`w-6 text-right font-mono-num text-[14px] ${live ? "font-bold text-volt" : win ? "font-bold text-fg" : "font-semibold text-mut"}`}>
+        <span className={`w-6 text-right font-mono-num text-[14px] ${scored ? "font-bold text-live" : live ? "font-bold text-volt" : win ? "font-bold text-fg" : "font-semibold text-mut"}`}>
           {score}
         </span>
       )}
@@ -680,5 +755,103 @@ function RailButton({ children, active, dim, onClick }: { children: ReactNode; a
     >
       {children}
     </button>
+  )
+}
+
+/** Every match in play, grouped by league, with clocks ticking each second. */
+function LiveNow({ matches, onOpen }: { matches: Match[]; onOpen: (id: string) => void }) {
+  const live = matches.filter((m) => m.status === "LIVE" || m.status === "HT")
+  const next = matches.find((m) => m.status === "UPCOMING" && m.kickoffAt && new Date(m.kickoffAt).getTime() > Date.now())
+  const byLeague = new Map<string, Match[]>()
+  for (const m of live) {
+    if (!byLeague.has(m.league)) byLeague.set(m.league, [])
+    byLeague.get(m.league)!.push(m)
+  }
+
+  return (
+    <section className="mb-6">
+      <h2 className="mb-2 flex items-center gap-2 px-2.5 text-[11px] font-bold uppercase tracking-widest text-live">
+        <span className="live-dot inline-block h-1.5 w-1.5 rounded-full bg-live" />
+        Live now
+        {live.length > 0 && <span className="ml-auto rounded-full bg-live/15 px-1.5 text-[10px]">{live.length}</span>}
+      </h2>
+      {live.length === 0 && (
+        <p className="rounded-lg bg-white/[0.03] px-2.5 py-2 text-[12px] text-mut">
+          No matches in play.
+          {next && (
+            <>
+              {" "}
+              Next: {teams[next.home]?.short} v {teams[next.away]?.short} at {next.kickoff}
+            </>
+          )}
+        </p>
+      )}
+      <div className="space-y-2">
+        {[...byLeague.entries()].map(([league, ms]) => {
+          const info = leagueByName[league]
+          return (
+            <div key={league} className="overflow-hidden rounded-xl border border-white/[0.06] bg-white/[0.02]">
+              <div className="flex items-center gap-2 border-b border-white/[0.05] px-2.5 py-1.5">
+                {info && <LeagueLogo src={info.logo} accent={info.accent} size={16} label="" />}
+                <span className="truncate text-[11px] font-bold text-mut">{league}</span>
+              </div>
+              {ms.map((m) => (
+                <RailMatch key={m.id} m={m} onOpen={onOpen} />
+              ))}
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+function RailMatch({ m, onOpen }: { m: Match; onOpen: (id: string) => void }) {
+  const flash = useGoalFlash(m)
+  return (
+    <button onClick={() => onOpen(m.id)} className={`flex w-full items-center gap-2 px-2.5 py-1.5 text-left hover:bg-white/[0.04] ${flash ? "goal-flash" : ""}`}>
+      <span className="w-12 shrink-0 text-[11px] font-semibold text-live">{flash ? "GOAL" : <LiveClock m={m} />}</span>
+      <span className="min-w-0 flex-1 space-y-0.5">
+        <RailScore id={m.home} score={m.homeScore} lead={m.homeScore > m.awayScore} />
+        <RailScore id={m.away} score={m.awayScore} lead={m.awayScore > m.homeScore} />
+      </span>
+    </button>
+  )
+}
+
+function RailScore({ id, score, lead }: { id: string; score: number; lead: boolean }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <Crest id={id} size={14} />
+      <span className={`min-w-0 flex-1 truncate text-[12px] ${lead ? "font-bold text-fg" : "text-fg/80"}`}>{teams[id]?.name ?? id}</span>
+      <span className={`font-mono-num text-[12px] font-bold ${lead ? "text-volt" : "text-fg/80"}`}>{score}</span>
+    </span>
+  )
+}
+
+const STARRED_KEY = "pitchlive.starredMatches"
+
+function readStarred(): Record<string, boolean> {
+  try {
+    return JSON.parse(localStorage.getItem(STARRED_KEY) ?? "{}")
+  } catch {
+    return {}
+  }
+}
+
+function writeStarred(favs: Record<string, boolean>) {
+  try {
+    localStorage.setItem(STARRED_KEY, JSON.stringify(Object.fromEntries(Object.entries(favs).filter(([, v]) => v))))
+  } catch {
+    // Storage can be unavailable (private mode); stars then last for the visit only.
+  }
+}
+
+function WorldGlobe() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-[70%] w-[70%] text-cobalt" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18M12 3c2.6 2.8 3.8 5.8 3.8 9s-1.2 6.2-3.8 9c-2.6-2.8-3.8-5.8-3.8-9S9.4 5.8 12 3z" />
+    </svg>
   )
 }

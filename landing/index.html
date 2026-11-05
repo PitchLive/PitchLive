@@ -1,0 +1,817 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PitchLive · Just the match</title>
+<meta name="description" content="Live football scores, line-ups and tables that move the second the game does. No ads. Nothing in the way.">
+<meta name="theme-color" content="#08161e">
+<!-- DEPLOY STEP: set og:url and og:image to absolute live URLs, and set the scores link below to the live PitchLive site. -->
+<meta property="og:title" content="PitchLive · Just the match">
+<meta property="og:description" content="Live scores, line-ups and tables that move the second the game does. No ads. Nothing in the way.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://example.com/">
+<meta property="og:image" content="https://example.com/assets/hero-ending.jpg">
+<meta name="pitchlive-scores-url" content="/scores/">
+<script>
+  // Returning fans skip the intro: once a visitor has clicked through to the scores,
+  // later visits go straight there. Add ?intro to the address to see this page anyway.
+  (function () {
+    try {
+      if (/[?&]intro\b/.test(location.search)) return;
+      if (localStorage.getItem('pitchlive.seenIntro') === '1') {
+        location.replace(document.querySelector('meta[name="pitchlive-scores-url"]').content);
+      }
+    } catch (e) {}
+  })();
+</script>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2308161e'/%3E%3Ccircle cx='36' cy='28' r='16' fill='%23ece24c'/%3E%3Cg fill='%2308161e'%3E%3Ccircle cx='36' cy='28' r='2.4'/%3E%3Ccircle cx='29' cy='22' r='2'/%3E%3Ccircle cx='43' cy='22' r='2'/%3E%3Ccircle cx='29' cy='34' r='2'/%3E%3Ccircle cx='43' cy='34' r='2'/%3E%3Ccircle cx='36' cy='16' r='1.8'/%3E%3Ccircle cx='36' cy='40' r='1.8'/%3E%3C/g%3E%3Cpath d='M10 50 L24 36 M16 54 L28 42 M8 42 L20 30' stroke='%23ece24c' stroke-width='3.4' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@800;900&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --canvas:#08161e;
+  --canvas-deep:#061118;
+  --panel:#0f222c;
+  --panel-2:#142c38;
+  --line:#21404d;
+  --line-strong:#3a6372;
+  --turf:#23401a;
+  --turf-line:#4f7a3c;
+  --accent:#ece24c;
+  --accent-hover:#f5ee82;
+  --accent-muted:rgba(236,226,76,.16);
+  --live:#ff4d5e;
+  --text-secondary:#a4b8b9;
+  --text-primary:#eef3ee;
+  --display:"Big Shoulders Display",Impact,"Arial Narrow",sans-serif;
+  --body:"Instrument Sans",system-ui,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+  --ease-out:cubic-bezier(.22,1,.36,1);
+  --ease-spring:cubic-bezier(.34,1.56,.64,1);
+  --tshadow:0 1px 2px rgba(3,10,14,.95),0 3px 12px rgba(3,10,14,.78),0 10px 44px rgba(3,10,14,.8);
+  --gutter:clamp(16px,5vw,72px);
+  --maxw:1240px;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{overflow-x:hidden;overflow-x:clip;scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{margin:0;overflow-x:hidden;overflow-x:clip;background:var(--canvas);color:var(--text-primary);font-family:var(--body);font-size:17px;line-height:1.7;-webkit-font-smoothing:antialiased;animation:page-in .9s var(--ease-out) both}
+@keyframes page-in{from{opacity:0}to{opacity:1}}
+img{display:block;max-width:100%}
+a{color:inherit}
+h1,h2,h3{font-family:var(--display);font-weight:900;line-height:.95;letter-spacing:-.01em;margin:0;text-transform:uppercase}
+p{margin:0}
+.sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:6px}
+.skip{position:fixed;left:16px;top:-60px;z-index:100;background:var(--accent);color:var(--canvas);padding:10px 16px;border-radius:10px;font-weight:600;text-decoration:none;transition:transform .3s var(--ease-out)}
+.skip:focus{transform:translateY(76px)}
+
+/* One environment behind everything: two floodlight glows drifting, plus grain. */
+.env{position:fixed;inset:0;z-index:-1;pointer-events:none;overflow:hidden}
+.env::before,.env::after{content:"";position:absolute;width:70vmax;height:70vmax;border-radius:50%;opacity:.5;animation:drift 74s ease-in-out infinite alternate}
+.env::before{left:-20vmax;top:-25vmax;background:radial-gradient(circle,rgba(236,226,76,.09),rgba(236,226,76,0) 62%)}
+.env::after{right:-25vmax;bottom:-30vmax;background:radial-gradient(circle,rgba(79,122,60,.16),rgba(79,122,60,0) 62%);animation-delay:-31s}
+@keyframes drift{from{transform:translate3d(0,0,0) scale(1)}to{transform:translate3d(12vmax,9vmax,0) scale(1.15)}}
+.grain{position:fixed;inset:0;z-index:60;pointer-events:none;opacity:.06;mix-blend-mode:overlay}
+
+/* Nav */
+.nav{position:fixed;inset:0 0 auto;z-index:50;display:flex;align-items:center;gap:24px;padding:14px var(--gutter);transition:background-color .5s var(--ease-out),box-shadow .5s var(--ease-out)}
+.nav.solid{background:rgba(8,22,30,.82);backdrop-filter:blur(14px);box-shadow:0 1px 0 rgba(58,99,114,.35),0 12px 40px -18px rgba(3,10,14,.9)}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;font-family:var(--display);font-weight:900;font-size:26px;letter-spacing:.02em;text-transform:uppercase;text-shadow:var(--tshadow)}
+.brand svg{width:34px;height:34px;flex:none}
+.brand b{color:var(--accent);font-weight:900}
+.nav ul{display:flex;gap:6px;list-style:none;margin:0 0 0 auto;padding:0}
+.nav ul a{display:block;padding:8px 14px;border-radius:999px;text-decoration:none;font-size:15px;font-weight:500;color:var(--text-primary);text-shadow:var(--tshadow);transition:background-color .3s var(--ease-out),color .3s var(--ease-out)}
+.nav ul a:hover{background:rgba(238,243,238,.08)}
+.nav ul a:active{background:rgba(238,243,238,.14)}
+@media (max-width:860px){.nav ul{display:none}.nav .btn{margin-left:auto}}
+
+/* Buttons */
+.btn{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:10px;padding:13px 24px;border-radius:999px;border:0;background:var(--accent);color:#0b1a10;font:600 16px/1.2 var(--body);text-decoration:none;cursor:pointer;text-shadow:none;isolation:isolate;transition:transform .35s var(--ease-spring),background-color .3s var(--ease-out)}
+.btn::before{content:"";position:absolute;inset:0;border-radius:inherit;z-index:-1;box-shadow:0 8px 24px -6px rgba(236,226,76,.45),0 2px 6px rgba(236,226,76,.25);opacity:.7;transition:opacity .35s var(--ease-out)}
+.btn:hover{background:var(--accent-hover);transform:translateY(-2px)}
+.btn:hover::before{opacity:1}
+.btn:active{transform:translateY(0) scale(.97)}
+.btn .dot{width:8px;height:8px;border-radius:50%;background:var(--live);box-shadow:0 0 0 3px rgba(255,77,94,.25)}
+.btn.small{padding:10px 18px;font-size:15px}
+@media (pointer:coarse){.btn{min-height:44px;display:inline-flex;align-items:center;justify-content:center}}
+
+/* ===== Hero (scrub) ===== */
+.hero-scrub{position:relative;height:400vh}
+.stage{position:sticky;top:0;height:100vh;height:100svh;overflow:hidden;background:var(--canvas-deep)}
+.poster{position:absolute;inset:0;background:var(--canvas-deep) center/cover no-repeat}
+.stage video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transform:translateZ(0);will-change:transform;transition:opacity .8s var(--ease-out)}
+.stage.video-ready video{opacity:1}
+.stage.video-failed video{display:none}
+.scrim{position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 120% 90% at 60% 45%,rgba(4,12,17,0) 35%,rgba(4,12,17,.62) 100%),linear-gradient(180deg,rgba(4,12,17,.55) 0%,rgba(4,12,17,0) 18%,rgba(4,12,17,0) 80%,rgba(8,22,30,.9) 100%)}
+.band{position:absolute;left:var(--gutter);top:50%;width:min(620px,calc(100vw - 2*var(--gutter)));transform:translateY(-50%);opacity:0;text-shadow:var(--tshadow);pointer-events:none}
+.band.on{pointer-events:auto}
+.band::before{content:"";position:absolute;inset:-30% -40% -30% -30%;z-index:-1;pointer-events:none;opacity:calc(.25 + .75*var(--k,1));background:radial-gradient(ellipse 62% 58% at 40% 50%,rgba(3,10,14,var(--peak,.66)) 0%,rgba(3,10,14,calc(var(--peak,.66)*.66)) 46%,rgba(3,10,14,0) 76%)}
+.kick{font-family:var(--mono);font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);display:inline-flex;align-items:center;gap:10px}
+.live-dot{width:8px;height:8px;border-radius:50%;background:var(--live);position:relative;flex:none}
+.live-dot::after{content:"";position:absolute;inset:-5px;border-radius:50%;border:2px solid var(--live);opacity:0}
+.play .live-dot::after,.live-dot.always::after{animation:ping 2.4s var(--ease-out) infinite}
+@keyframes ping{0%{transform:scale(.5);opacity:.8}100%{transform:scale(1.9);opacity:0}}
+.band h1,.band h2{font-size:clamp(52px,8.4vw,128px);margin-top:14px}
+.band .w{display:inline-block;white-space:nowrap}
+/* Band 1: blur-to-sharp, haze clearing */
+.b1 .stack{position:relative;display:block}
+.b1 .soft{position:absolute;inset:0;filter:blur(10px);opacity:calc(1 - var(--k,0))}
+.b1 .sharp{opacity:var(--k,0)}
+/* Band 2: drift-down, words falling with the camera */
+.b2 .w{--kc:clamp(0,(var(--k,0) - var(--th,0))*2.8,1);opacity:var(--kc);transform:translateY(calc((1 - var(--kc))*-28px))}
+.b2 .em{color:var(--accent)}
+.band.b2 h2{font-size:clamp(46px,5.6vw,88px)}
+.b2 .w{display:block}
+/* Band 3: word-by-word rise into a staged settle */
+.b3 .w{--kc:clamp(0,(var(--k,0) - var(--th,0))*3,1);opacity:var(--kc);transform:translateY(calc((1 - var(--kc))*34px))}
+.b3 .sub{--ks:clamp(0,(var(--k,0) - .62)*4,1);opacity:var(--ks);transform:translateY(calc((1 - var(--ks))*14px));font-size:clamp(17px,1.5vw,20px);max-width:38ch;margin-top:18px;color:var(--text-primary)}
+.b3 .row{--kb:clamp(0,(var(--k,0) - .76)*5,1);opacity:var(--kb);transform:translateY(calc((1 - var(--kb))*12px));margin-top:28px;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.b3 .note{font-family:var(--mono);font-size:13px;color:var(--text-secondary)}
+.clockchip{position:absolute;right:var(--gutter);top:88px;display:flex;align-items:baseline;gap:12px;padding:10px 16px;background:rgba(6,17,24,.55);border:1px solid rgba(58,99,114,.45);border-radius:12px;backdrop-filter:blur(10px);font-family:var(--mono);font-size:14px;text-shadow:0 1px 3px rgba(3,10,14,.85)}
+.clockchip .lbl{color:var(--live);letter-spacing:.12em;display:flex;align-items:center;gap:8px}
+.clockchip .t{font-size:22px;color:var(--text-primary);font-variant-numeric:tabular-nums;min-width:5ch;text-align:right}
+.ring{position:absolute;left:50%;bottom:32px;width:44px;height:44px;margin-left:-22px;color:var(--accent);transform:rotate(-90deg);transition:opacity .6s var(--ease-out)}
+.ring circle.track{stroke:rgba(238,243,238,.14)}
+.stage.video-ready .ring{opacity:0}
+.cue{position:absolute;left:50%;bottom:30px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:6px;font-family:var(--mono);font-size:12px;letter-spacing:.14em;color:var(--text-secondary);text-shadow:var(--tshadow);opacity:0;transition:opacity .6s var(--ease-out)}
+.stage.video-ready .cue,.stage.video-failed .cue{opacity:1}
+.stage.at-end .cue{opacity:0}
+.cue svg{animation:nudge 2.6s ease-in-out infinite}
+@keyframes nudge{0%,100%{transform:translateY(0)}50%{transform:translateY(6px)}}
+@media (max-height:560px){.clockchip,.cue,.ring{display:none}}
+
+/* ===== Hero (static, phones and reduced motion) ===== */
+.hero-static{display:none;position:relative;min-height:100svh;padding:120px var(--gutter) 64px;align-items:end;background:linear-gradient(180deg,rgba(6,17,24,.55) 0%,rgba(6,17,24,.15) 30%,rgba(6,17,24,.7) 70%,var(--canvas) 100%),url("assets/hero-ending.jpg") center/cover no-repeat}
+.hero-static .inner{max-width:560px;text-shadow:var(--tshadow)}
+.hero-static h1{font-size:clamp(56px,16vw,96px);margin-top:12px}
+.hero-static p{margin-top:16px;max-width:38ch}
+.hero-static .btn{margin-top:26px}
+@media (max-width:720px),(orientation:portrait) and (max-width:1024px),(orientation:portrait) and (pointer:coarse),(orientation:landscape) and (pointer:coarse) and (max-height:560px),(prefers-reduced-motion:reduce){
+  .hero-scrub{display:none}
+  .hero-static{display:grid}
+}
+
+/* ===== Sections ===== */
+main{display:block}
+main:focus{outline:none}
+.sec{position:relative;padding:clamp(96px,14vw,168px) var(--gutter)}
+.wrap{max-width:var(--maxw);margin:0 auto;position:relative}
+.sec h2{font-size:clamp(44px,6.4vw,92px)}
+.lede{color:var(--text-secondary);max-width:52ch;margin-top:18px}
+/* Entrances: container-prefixed so they win the cascade */
+.rv .part{opacity:0;transform:translateY(26px);transition:opacity .9s var(--ease-out),transform .9s var(--ease-out)}
+.rv.in .part{opacity:1;transform:none}
+.rv.in .part:nth-child(2){transition-delay:.09s}
+.rv.in .part:nth-child(3){transition-delay:.18s}
+.rv.in .part:nth-child(4){transition-delay:.27s}
+.rv.in.settled .part:nth-child(n){transition-delay:0s}
+
+/* A: what fans told us */
+.problem .wrap{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:clamp(32px,6vw,96px);align-items:center}
+.quotes{display:grid;gap:18px}
+.quote{position:relative;padding:22px 26px 22px 64px;background:var(--panel);border:1px solid var(--line);border-radius:16px;font-family:var(--display);font-weight:800;font-size:clamp(28px,3.2vw,42px);line-height:1.05;text-transform:uppercase;box-shadow:0 1px 0 rgba(238,243,238,.04) inset,0 18px 40px -24px rgba(3,10,14,.9),0 6px 14px -8px rgba(3,10,14,.6)}
+.quote::before{content:"\201C";position:absolute;left:20px;top:10px;font-size:64px;line-height:1;color:var(--live);opacity:.9}
+.quotes .quote:nth-child(1){transform-origin:left;margin-right:10%}
+.quotes .quote:nth-child(2){margin-left:8%}
+.quotes .quote:nth-child(3){margin-right:4%}
+.rv .quote.part{transform:translateX(40px)}
+.rv.in .quote.part{transform:none}
+.answer{margin-top:28px;font-family:var(--display);font-weight:900;font-size:clamp(34px,4vw,56px);line-height:1;text-transform:uppercase;color:var(--accent)}
+@media (max-width:860px){.problem .wrap{grid-template-columns:1fr}.quotes .quote:nth-child(n){margin:0}}
+
+/* B: proof, three alternating feature rows with the real product */
+.proof .head{max-width:820px}
+.feats{display:grid;gap:clamp(56px,8vw,112px);margin-top:72px}
+.feat{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,4fr);gap:clamp(28px,5vw,72px);align-items:center}
+.feat:nth-child(even){grid-template-columns:minmax(0,4fr) minmax(0,7fr)}
+.feat:nth-child(even) .shot{order:2}
+.feat .shot{position:relative;border-radius:18px;overflow:hidden;background:#0d1116;border:1px solid var(--line);box-shadow:0 40px 80px -40px rgba(3,10,14,.95),0 14px 28px -18px rgba(3,10,14,.75),0 0 0 6px rgba(15,34,44,.6);transition:transform .6s var(--ease-out),border-color .4s var(--ease-out)}
+.feat .shot:hover{transform:translateY(-4px);border-color:var(--line-strong)}
+.feat .shot img{width:100%;height:auto}
+.feat .n{font-family:var(--mono);font-size:13px;letter-spacing:.14em;color:var(--accent)}
+.feat h3{font-size:clamp(40px,4.4vw,60px);margin-top:12px}
+.feat p{color:var(--text-secondary);margin-top:14px;max-width:34ch}
+.rv .feat-txt{transition-delay:.12s}
+@media (max-width:860px){.feat,.feat:nth-child(even){grid-template-columns:1fr}.feat:nth-child(even) .shot{order:0}}
+
+/* C: the interactive moment */
+.feel .wrap{text-align:center}
+.board{position:relative;max-width:760px;margin:56px auto 0;background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:10px;box-shadow:0 40px 80px -40px rgba(3,10,14,.95),0 0 0 1px rgba(236,226,76,.05)}
+.board-head{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;font-family:var(--mono);font-size:13px;color:var(--text-secondary);letter-spacing:.08em}
+.board-head .lg{display:flex;align-items:center;gap:10px}
+.mrow{position:relative;display:grid;grid-template-columns:96px 1fr auto;align-items:center;gap:8px;padding:16px 20px;border-radius:14px;background:#161a24;text-align:left;overflow:hidden}
+.mrow::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--live)}
+.mrow::after{content:"";position:absolute;inset:0;background:rgba(255,77,94,.22);opacity:0;pointer-events:none;transition:opacity .5s var(--ease-out)}
+.mrow.goal::after{animation:goalflash 2.2s var(--ease-out) 2}
+@keyframes goalflash{0%,100%{opacity:0}18%{opacity:1}55%{opacity:.35}}
+.mrow .clk{font-family:var(--mono);font-size:20px;color:var(--live);font-variant-numeric:tabular-nums}
+.mrow .clk .gl{display:none;font-weight:700;letter-spacing:.06em}
+.mrow.goal .clk .tm{display:none}
+.mrow.goal .clk .gl{display:inline}
+.teams{display:grid;gap:8px}
+.team{display:flex;align-items:center;gap:12px;font-weight:600;font-size:18px}
+.crest{width:26px;height:26px;border-radius:50%;flex:none;display:grid;place-items:center;font:700 10px/1 var(--mono)}
+.scores{display:grid;gap:8px;text-align:right;font:700 24px/1.12 var(--mono);color:#62ff9c;font-variant-numeric:tabular-nums}
+.scores .bump{display:inline-block}
+.mrow.goal .scores .bump{animation:bump .7s var(--ease-spring)}
+@keyframes bump{0%{transform:scale(1)}40%{transform:scale(1.5)}100%{transform:scale(1)}}
+.hold-wrap{display:flex;flex-direction:column;align-items:center;gap:14px;margin-top:34px}
+.hold{--p:0;position:relative;width:132px;height:132px;border-radius:50%;border:0;background:radial-gradient(circle at 50% 40%,#1d3a46,#0f222c);color:var(--text-primary);font:600 15px/1.25 var(--body);cursor:pointer;touch-action:none;user-select:none;-webkit-user-select:none;transition:transform .3s var(--ease-spring);box-shadow:0 18px 40px -20px rgba(3,10,14,.95),0 0 0 1px var(--line) inset}
+.hold:hover{transform:scale(1.04)}
+.hold:active,.hold.pressing{transform:scale(.96)}
+.hold svg{position:absolute;inset:-6px;width:calc(100% + 12px);height:calc(100% + 12px);transform:rotate(-90deg);pointer-events:none}
+.hold svg .bar{stroke:var(--accent);stroke-dasharray:1;stroke-dashoffset:calc(1 - var(--p))}
+.hold svg .trk{stroke:rgba(238,243,238,.1)}
+.hold[disabled]{cursor:default}
+.hold-msg{min-height:1.7em;font-family:var(--mono);font-size:14px;color:var(--text-secondary)}
+.replay{background:none;border:0;color:var(--accent);font:500 14px var(--mono);cursor:pointer;padding:6px 10px;border-radius:8px;opacity:0;pointer-events:none;transition:opacity .4s var(--ease-out),background-color .3s var(--ease-out)}
+.replay.show{opacity:1;pointer-events:auto}
+.replay:hover{background:var(--accent-muted)}
+.replay:active{background:rgba(236,226,76,.26)}
+
+/* D: coverage */
+.leagues .wrap{display:grid;grid-template-columns:minmax(0,1fr);gap:48px}
+.pitchlines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;overflow:visible}
+.pitchlines path,.pitchlines circle,.pitchlines rect{fill:none;stroke:var(--turf-line);stroke-width:1.5;opacity:.45;vector-effect:non-scaling-stroke}
+.draw{stroke-dasharray:1;stroke-dashoffset:var(--d,1)}
+.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px;position:relative;z-index:1}
+.stat{padding:30px 28px;border-radius:20px;background:rgba(15,34,44,.78);border:1px solid var(--line);backdrop-filter:blur(6px)}
+.stat .n{font-family:var(--display);font-weight:900;font-size:clamp(64px,8vw,120px);line-height:.9;color:var(--accent)}
+.stat .n.txt{font-size:clamp(40px,4.6vw,64px);line-height:1;color:var(--text-primary);text-transform:uppercase}
+.stat .l{font-family:var(--mono);font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--text-secondary);margin-top:12px}
+.leagues .lede{max-width:60ch}
+@media (max-width:860px){.stats{grid-template-columns:1fr}}
+
+/* E: how it works */
+.steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:clamp(20px,3vw,40px);margin-top:64px;counter-reset:s}
+.step{position:relative;padding-top:12px;border-top:1px solid var(--line-strong)}
+.step .num{font-family:var(--display);font-weight:900;font-size:clamp(110px,13vw,180px);line-height:.8;color:transparent;-webkit-text-stroke:2px var(--line-strong);position:relative}
+.step .num::after{content:attr(data-n);position:absolute;inset:0;color:var(--accent);-webkit-text-stroke:0;opacity:0;animation:numglow 6s ease-in-out infinite}
+.step:nth-child(2) .num::after{animation-delay:-2s}
+.step:nth-child(3) .num::after{animation-delay:-4s}
+@keyframes numglow{0%,100%{opacity:.12}45%,55%{opacity:.34}}
+.step .ico{width:44px;height:44px;margin-top:22px;color:var(--accent)}
+.step h3{font-size:36px;margin-top:14px}
+.step p{color:var(--text-secondary);margin-top:8px;max-width:30ch}
+@media (max-width:860px){.steps{grid-template-columns:1fr}}
+
+/* F: FAQ */
+.faq .wrap{display:grid;grid-template-columns:minmax(0,4fr) minmax(0,7fr);gap:clamp(32px,6vw,96px);align-items:start}
+.faq .side{position:sticky;top:110px}
+.qa{border-bottom:1px solid var(--line)}
+.qa summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:20px;padding:22px 4px;font-weight:600;font-size:19px;border-radius:8px;transition:color .3s var(--ease-out)}
+.qa summary::-webkit-details-marker{display:none}
+.qa summary:hover{color:var(--accent)}
+.qa summary:active{opacity:.8}
+.qa .pm{width:28px;height:28px;flex:none;border-radius:50%;border:1px solid var(--line-strong);position:relative;transition:transform .45s var(--ease-spring),border-color .3s var(--ease-out)}
+.qa .pm::before,.qa .pm::after{content:"";position:absolute;left:50%;top:50%;width:11px;height:1.5px;background:currentColor;transform:translate(-50%,-50%)}
+.qa .pm::after{transform:translate(-50%,-50%) rotate(90deg)}
+.qa[open] .pm{transform:rotate(45deg);border-color:var(--accent)}
+.qa .ans{color:var(--text-secondary);padding:0 4px 24px;max-width:60ch;animation:open .5s var(--ease-out)}
+@keyframes open{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+@media (max-width:860px){.faq .wrap{grid-template-columns:1fr}.faq .side{position:static}}
+
+/* G: the close */
+.close{min-height:92vh;display:grid;align-items:center;overflow:hidden;background:linear-gradient(180deg,var(--canvas) 0%,rgba(8,22,30,.35) 30%,rgba(8,22,30,.55) 70%,var(--canvas) 100%),url("assets/hero-ending.jpg") center/cover no-repeat}
+.close .wrap{text-align:center;text-shadow:var(--tshadow)}
+.close h2{font-size:clamp(80px,14vw,200px)}
+.close p{font-size:clamp(18px,1.8vw,22px);margin-top:18px}
+.close .btn{margin-top:34px}
+.motes{position:absolute;inset:0;pointer-events:none}
+.motes i{position:absolute;bottom:-10px;width:3px;height:3px;border-radius:50%;background:var(--accent-hover);opacity:0;animation:rise 14s linear infinite}
+@keyframes rise{0%{transform:translateY(0);opacity:0}15%{opacity:.55}85%{opacity:.3}100%{transform:translateY(-80vh);opacity:0}}
+
+footer{padding:40px var(--gutter) 48px;border-top:1px solid var(--line);color:var(--text-secondary);font-size:15px}
+footer .wrap{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:16px}
+footer nav{display:flex;gap:18px;flex-wrap:wrap}
+footer a{text-decoration:none;padding:4px 2px;border-radius:6px;transition:color .3s var(--ease-out)}
+footer a:hover{color:var(--accent)}
+footer a:active{opacity:.75}
+footer small{display:block;font-family:var(--mono);font-size:12px;margin-top:6px}
+
+/* Living elements run only while their section is on screen, and never on hidden tabs. */
+.sec:not(.play) *,.sec:not(.play) *::before,.sec:not(.play) *::after{animation-play-state:paused!important}
+body.paused *,body.paused *::before,body.paused *::after{animation-play-state:paused!important}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important;transition-delay:0s!important;scroll-behavior:auto!important}
+  .rv .part,.rv .quote.part{opacity:1;transform:none}
+  .draw{stroke-dashoffset:0!important}
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="env" aria-hidden="true"></div>
+<svg class="grain" aria-hidden="true" width="100%" height="100%"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency=".8" numOctaves="3" stitchTiles="stitch"/><feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 .9 0"/></filter><rect width="100%" height="100%" filter="url(#n)"/></svg>
+
+<nav class="nav" aria-label="Main">
+  <a class="brand" href="#top" aria-label="PitchLive home">
+    <svg viewBox="0 0 64 64" aria-hidden="true"><circle cx="38" cy="26" r="17" fill="#ece24c"/><g fill="#08161e"><circle cx="38" cy="26" r="2.6"/><circle cx="31" cy="20" r="2.1"/><circle cx="45" cy="20" r="2.1"/><circle cx="31" cy="32" r="2.1"/><circle cx="45" cy="32" r="2.1"/><circle cx="38" cy="13.5" r="1.9"/><circle cx="38" cy="38.5" r="1.9"/><circle cx="25.5" cy="26" r="1.9"/><circle cx="50.5" cy="26" r="1.9"/></g><path d="M6 52 L22 36 M14 58 L28 44 M4 42 L18 28" stroke="#ece24c" stroke-width="3.6" stroke-linecap="round"/></svg>
+    <span>Pitch<b>Live</b></span>
+  </a>
+  <ul>
+    <li><a href="#how">How it works</a></li>
+    <li><a href="#leagues">Leagues</a></li>
+    <li><a href="#faq">FAQ</a></li>
+  </ul>
+  <a class="btn small scores-link" href="/scores/"><span class="dot" aria-hidden="true"></span>Open live scores</a>
+</nav>
+
+<header id="top">
+  <section class="hero-scrub" aria-label="PitchLive">
+    <div class="stage">
+      <div class="poster" aria-hidden="true"></div>
+      <video id="hero" preload="none" muted playsinline aria-hidden="true" tabindex="-1"></video>
+      <div class="scrim" aria-hidden="true"></div>
+
+      <div class="band b1" data-a="0" data-b="0.30" style="--peak:.62">
+        <span class="kick"><span class="live-dot always" aria-hidden="true"></span>Matchday</span>
+        <h2><span class="sr">The lights are on.</span><span class="stack" aria-hidden="true"><span class="soft">The lights are on.</span><span class="sharp">The lights are on.</span></span></h2>
+      </div>
+
+      <div class="band b2" data-a="0.36" data-b="0.64" style="--peak:.88">
+        <h2 class="split"><span class="sr">Every match. Every minute. Live.</span><span aria-hidden="true" data-words="Every match.|Every minute.|*Live.*"></span></h2>
+      </div>
+
+      <div class="band b3" data-a="0.72" data-b="1" data-ramp="0.06" style="--peak:.8">
+        <h1 class="split"><span class="sr">Just the match.</span><span aria-hidden="true" data-words="Just|the|match."></span></h1>
+        <p class="sub">Live scores, line-ups and tables that move the second the game does. No ads. Nothing in the way.</p>
+        <div class="row"><a class="btn scores-link" href="/scores/"><span class="dot" aria-hidden="true"></span>Open live scores</a><span class="note">Free. No sign up.</span></div>
+      </div>
+
+      <div class="clockchip" aria-hidden="true"><span class="lbl"><span class="live-dot always"></span>LIVE</span><span class="t">00:00</span></div>
+      <svg class="ring" viewBox="0 0 48 48" aria-hidden="true"><circle class="track" cx="24" cy="24" r="20" fill="none" stroke-width="3"/><circle cx="24" cy="24" r="20" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-dasharray="126" style="stroke-dashoffset:var(--ld,126)"/></svg>
+      <div class="cue" aria-hidden="true">SCROLL<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg></div>
+    </div>
+  </section>
+
+  <section class="hero-static" aria-label="PitchLive">
+    <div class="inner">
+      <span class="kick"><span class="live-dot always" aria-hidden="true"></span>Matchday</span>
+      <h1>Just the match.</h1>
+      <p>Live scores, line-ups and tables that move the second the game does. No ads. Nothing in the way.</p>
+      <a class="btn scores-link" href="/scores/"><span class="dot" aria-hidden="true"></span>Open live scores</a>
+    </div>
+  </section>
+</header>
+
+<main id="main" tabindex="-1">
+
+  <section class="sec problem" aria-labelledby="p-h">
+    <div class="wrap">
+      <div class="rv">
+        <span class="kick part">What fans told us</span>
+        <h2 id="p-h" class="part" style="margin-top:16px">Score apps got in the way.</h2>
+        <p class="answer part">So we built the opposite.</p>
+      </div>
+      <div class="quotes rv">
+        <p class="quote part">Too many ads.</p>
+        <p class="quote part">The goal alert came after the TV.</p>
+        <p class="quote part">I can't find the score under all the clutter.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec proof" aria-labelledby="pr-h">
+    <div class="wrap">
+      <div class="head rv">
+        <span class="kick part"><span class="live-dot always" aria-hidden="true"></span>The real thing</span>
+        <h2 id="pr-h" class="part" style="margin-top:16px">Everything about the match. Nothing else.</h2>
+      </div>
+      <div class="feats">
+        <article class="feat rv">
+          <div class="shot part"><img src="assets/proof-scores.webp" width="1200" height="385" loading="lazy" alt="PitchLive scores list with two Brasileirão matches live, their clocks running in red."></div>
+          <div class="feat-txt part"><span class="n">01</span><h3>Scores that tick.</h3><p>Every live clock runs to the second. Goals flash the moment they land.</p></div>
+        </article>
+        <article class="feat rv">
+          <div class="shot part"><img src="assets/proof-match.webp" width="1200" height="726" loading="lazy" alt="PitchLive match page showing live statistics: possession, shots, corners and fouls."></div>
+          <div class="feat-txt part"><span class="n">02</span><h3>The whole match.</h3><p>Stats, line-ups and live commentary for the game you are watching.</p></div>
+        </article>
+        <article class="feat rv">
+          <div class="shot part"><img src="assets/proof-table.webp" width="1200" height="714" loading="lazy" alt="PitchLive live league table with two matches in play, showing clubs moving up and down."></div>
+          <div class="feat-txt part"><span class="n">03</span><h3>Tables that move.</h3><p>The table updates while the games are still on, so you see where your club would finish right now.</p></div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec feel" aria-labelledby="f-h">
+    <div class="wrap">
+      <div class="rv">
+        <span class="kick part">Feel it land</span>
+        <h2 id="f-h" class="part" style="margin-top:16px">Hold to play the last minute.</h2>
+      </div>
+      <div class="board rv">
+        <div class="part">
+          <div class="board-head"><span class="lg"><span class="live-dot always" aria-hidden="true"></span>LIVE · LEAGUE</span><span>DEMO</span></div>
+          <div class="mrow" id="mrow">
+            <span class="clk" aria-live="polite"><span class="tm">89:12</span><span class="gl">GOAL</span></span>
+            <div class="teams">
+              <span class="team"><span class="crest" style="background:#2b5ea8" aria-hidden="true">HFC</span>Harbour FC</span>
+              <span class="team"><span class="crest" style="background:#8a2d3b" aria-hidden="true">NGT</span>Northgate</span>
+            </div>
+            <div class="scores" aria-label="Score"><span class="bump" id="sh">1</span><span>1</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="hold-wrap">
+        <button class="hold" id="hold" type="button" aria-describedby="hold-msg">
+          <svg viewBox="0 0 100 100" aria-hidden="true"><circle class="trk" cx="50" cy="50" r="47" fill="none" stroke-width="3"/><circle class="bar" cx="50" cy="50" r="47" fill="none" stroke-width="3.5" stroke-linecap="round" pathLength="1"/></svg>
+          <span id="hold-lbl">Hold to play</span>
+        </button>
+        <p class="hold-msg" id="hold-msg">Press and hold. Let go and the clock rolls back.</p>
+        <button class="replay" id="replay" type="button">Play it again</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec leagues" id="leagues" aria-labelledby="l-h">
+    <svg class="pitchlines" viewBox="0 0 1200 700" preserveAspectRatio="none" aria-hidden="true">
+      <rect class="draw" x="40" y="40" width="1120" height="620" pathLength="1"/>
+      <path class="draw" d="M600 40 V660" pathLength="1"/>
+      <circle class="draw" cx="600" cy="350" r="110" pathLength="1"/>
+      <path class="draw" d="M40 190 H220 V510 H40" pathLength="1"/>
+      <path class="draw" d="M1160 190 H980 V510 H1160" pathLength="1"/>
+    </svg>
+    <div class="wrap">
+      <div class="rv">
+        <span class="kick part">Coverage</span>
+        <h2 id="l-h" class="part" style="margin-top:16px">Every league you care about.</h2>
+        <p class="lede part">From the Premier League and La Liga to the leagues close to home, plus the World Cup and the Champions League.</p>
+      </div>
+      <div class="stats rv">
+        <div class="stat part"><div class="n" data-count="190">190</div><div class="l">Competitions</div></div>
+        <div class="stat part"><div class="n" data-count="39">39</div><div class="l">Countries</div></div>
+        <div class="stat part"><div class="n txt">Every second</div><div class="l">Of every match</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec how" id="how" aria-labelledby="h-h">
+    <div class="wrap">
+      <div class="rv">
+        <span class="kick part">How it works</span>
+        <h2 id="h-h" class="part" style="margin-top:16px">Three steps. No setup.</h2>
+      </div>
+      <ol class="steps rv" style="list-style:none;padding:0">
+        <li class="step part">
+          <div class="num" data-n="1" aria-hidden="true">1</div>
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M3 9h18M7 6.5h.01M10 6.5h.01"/></svg>
+          <h3>Open PitchLive.</h3>
+          <p>No download, no sign up. It works in your browser.</p>
+        </li>
+        <li class="step part">
+          <div class="num" data-n="2" aria-hidden="true">2</div>
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11V5.5a1.5 1.5 0 0 1 3 0V11m0-1.5a1.5 1.5 0 0 1 3 0V11m0-.5a1.5 1.5 0 0 1 3 0V15a6 6 0 0 1-6 6h-1a6 6 0 0 1-5-2.7L4.6 15a1.6 1.6 0 0 1 2.5-2L9 15"/></svg>
+          <h3>Tap a match.</h3>
+          <p>See the score, the clock, the line-ups and every key moment.</p>
+        </li>
+        <li class="step part">
+          <div class="num" data-n="3" aria-hidden="true">3</div>
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+          <h3>Watch it move.</h3>
+          <p>Goals, cards and the table update by themselves. You never refresh.</p>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="sec faq" id="faq" aria-labelledby="q-h">
+    <div class="wrap">
+      <div class="side rv">
+        <span class="kick part">FAQ</span>
+        <h2 id="q-h" class="part" style="margin-top:16px">Before kick-off.</h2>
+      </div>
+      <div class="rv">
+        <div class="part">
+          <details class="qa"><summary>Is it free?<span class="pm" aria-hidden="true"></span></summary><p class="ans">Yes. Live scores, match pages and tables are free to use.</p></details>
+          <details class="qa"><summary>Are there ads?<span class="pm" aria-hidden="true"></span></summary><p class="ans">No. Nothing covers the score, ever.</p></details>
+          <details class="qa"><summary>Do I need an account?<span class="pm" aria-hidden="true"></span></summary><p class="ans">No. Open it and the scores are there. An account only saves your favourite clubs.</p></details>
+          <details class="qa"><summary>How live is live?<span class="pm" aria-hidden="true"></span></summary><p class="ans">The match clock runs on your screen every second, and scores change the moment our live feed receives them. No refresh button.</p></details>
+          <details class="qa"><summary>Is there an app?<span class="pm" aria-hidden="true"></span></summary><p class="ans">The PitchLive app for iPhone and Android is on the way. Until then, the site works great on your phone.</p></details>
+          <details class="qa"><summary>Which leagues?<span class="pm" aria-hidden="true"></span></summary><p class="ans">190 competitions across 39 countries, plus the big international tournaments.</p></details>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec close" aria-labelledby="c-h">
+    <div class="motes" aria-hidden="true"></div>
+    <div class="wrap rv">
+      <h2 id="c-h" class="part">Kick off.</h2>
+      <p class="part">The lights are on. The games are live.</p>
+      <div class="part"><a class="btn scores-link" href="/scores/"><span class="dot" aria-hidden="true"></span>Open live scores</a></div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>PitchLive. Live football scores.<small>Hero imagery is AI generated.</small></div>
+    <nav aria-label="Footer"><a class="scores-link" href="/scores/">Scores</a><a href="#leagues">Leagues</a><a href="#faq">FAQ</a></nav>
+  </div>
+</footer>
+
+<script>
+(() => {
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const smoothstep = (p, e0, e1) => { const t = clamp((p - e0) / (e1 - e0), 0, 1); return t * t * (3 - 2 * t); };
+  const REDUCED = matchMedia('(prefers-reduced-motion: reduce)');
+
+  // One place for the live scores address (patched at deploy).
+  const scoresUrl = $('meta[name="pitchlive-scores-url"]').content;
+  $$('.scores-link').forEach(a => {
+    a.href = scoresUrl;
+    a.addEventListener('click', () => { try { localStorage.setItem('pitchlive.seenIntro', '1'); } catch (e) {} });
+  });
+
+  // Split headlines into word spans with seeded thresholds (same on every load).
+  function rng(seed) { let s = seed >>> 0; return () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296; }
+  $$('[data-words]').forEach((holder, hi) => {
+    const r = rng(7 + hi);
+    const words = holder.dataset.words.split('|');
+    words.forEach((raw, i) => {
+      const em = raw.startsWith('*');
+      const w = document.createElement('span');
+      w.className = 'w' + (em ? ' em' : '');
+      w.textContent = raw.replace(/\*/g, '');
+      w.style.setProperty('--th', (i / words.length * 0.5 + r() * 0.05).toFixed(3));
+      holder.append(w, document.createTextNode(i < words.length - 1 ? ' ' : ''));
+    });
+  });
+
+  // ===== Hero scrub =====
+  const stage = $('.stage');
+  const hero = $('.hero-scrub');
+  const video = $('#hero');
+  const ring = $('.ring');
+  const posterLayer = $('.poster');
+  const clockEl = $('.clockchip .t');
+  const VIDEO_URL = 'assets/hero-scrub.mp4';
+  const VIDEO_BYTES = 6635709;
+  const bands = $$('.band').map((el, i) => ({ el, i, a: +el.dataset.a, b: +el.dataset.b, ramp: el.dataset.ramp ? +el.dataset.ramp : null, op: -1, k: -1, on: null }));
+
+  const heroProgress = () => {
+    const r = hero.getBoundingClientRect();
+    const range = r.height - innerHeight;
+    return range > 0 ? clamp(-r.top / range, 0, 1) : 0;
+  };
+
+  let seekBusy = false, pendingTime = null;
+  function requestSeek(t) {
+    if (!video.duration) return;
+    if (seekBusy) { pendingTime = t; return; }
+    seekBusy = true;
+    video.currentTime = t;
+  }
+  video.addEventListener('seeked', () => {
+    seekBusy = false;
+    if (pendingTime !== null) { const t = pendingTime; pendingTime = null; requestSeek(t); }
+  });
+  video.addEventListener('error', () => { seekBusy = false; pendingTime = null; failVideo(); });
+
+  // Band one assembles once on load, then hands over to scroll.
+  let loadK = 0, loadStart = 0;
+  function updateCaptions(p, now) {
+    for (const b of bands) {
+      const f = Math.min(0.02, (b.b - b.a) / 3);
+      const inE = b.i === 0 ? 1 : smoothstep(p, b.a, b.a + f);
+      const outE = b.i === bands.length - 1 ? 1 : 1 - smoothstep(p, b.b - f, b.b);
+      const op = Math.round(inE * outE * 1000) / 1000;
+      let k = clamp((p - b.a) / (b.ramp || Math.min(0.025, (b.b - b.a) * 0.35)), 0, 1);
+      if (b.i === 0) k = Math.max(k, loadK);
+      if (Math.abs(op - b.op) > 0.001) { b.op = op; b.el.style.opacity = op; }
+      if (Math.abs(k - b.k) > 0.008 || (k === 1 && b.k !== 1) || (k === 0 && b.k !== 0)) { b.k = k; b.el.style.setProperty('--k', k.toFixed(3)); }
+      const on = op > 0.5;
+      if (on !== b.on) { b.on = on; b.el.classList.toggle('on', on); }
+    }
+    updateClock(p, now);
+    const atEnd = p > 0.9;
+    if (atEnd !== lastAtEnd) { lastAtEnd = atEnd; stage.classList.toggle('at-end', atEnd); }
+  }
+  let lastAtEnd = null;
+  let lastLabel = '', lastLabelAt = 0;
+  function updateClock(p, now) {
+    if (now - lastLabelAt < 100 && p < 1) return;
+    const s = Math.round(p * 90 * 60);
+    const text = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+    if (text === lastLabel) return;
+    lastLabel = text; lastLabelAt = now;
+    clockEl.textContent = text;
+  }
+
+  let target = 0, shown = 0, rafId = null, lastTick = 0, heroOnScreen = true;
+  function tick(now) {
+    const dt = Math.min(100, now - (lastTick || now));
+    lastTick = now;
+    if (loadK < 1) loadK = clamp((now - loadStart) / 1100, 0, 1);
+    shown += (target - shown) * (1 - Math.pow(1 - 0.16, dt / 16.667));
+    if (Math.abs(target - shown) < 0.0005 && loadK >= 1) { shown = target; rafId = null; lastTick = 0; }
+    else rafId = requestAnimationFrame(tick);
+    requestSeek(shown * video.duration);
+    updateCaptions(shown, now);
+  }
+  function onScroll() {
+    target = heroProgress();
+    if (rafId === null && heroOnScreen) rafId = requestAnimationFrame(tick);
+  }
+  new IntersectionObserver(([e]) => { heroOnScreen = e.isIntersecting; if (heroOnScreen) onScroll(); }).observe(hero);
+
+  let started = false, inited = false;
+  function initHeroOnce() {
+    if (inited) return; inited = true;
+    loadStart = performance.now();
+    posterLayer.style.backgroundImage = "url('assets/hero-poster.jpg')";
+    const img = new Image();
+    img.onload = img.onerror = startBlobFetch;
+    img.src = 'assets/hero-poster.jpg';
+    setTimeout(startBlobFetch, 4000);
+  }
+  function startBlobFetch() { if (started) return; started = true; loadHeroBlob().catch(failVideo); }
+  async function loadHeroBlob() {
+    const ctrl = new AbortController();
+    let watchdog = setTimeout(() => ctrl.abort(), 20000);
+    const res = await fetch(VIDEO_URL, { priority: 'low', signal: ctrl.signal });
+    if (!res.ok || !res.body) throw new Error('video ' + res.status);
+    const total = Number(res.headers.get('Content-Length')) || VIDEO_BYTES;
+    const reader = res.body.getReader();
+    const chunks = []; let got = 0, lastRing = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      clearTimeout(watchdog); watchdog = setTimeout(() => ctrl.abort(), 20000);
+      chunks.push(value); got += value.length;
+      const frac = Math.min(1, got / total), now = performance.now();
+      if (now - lastRing > 100 || frac === 1) { lastRing = now; ring.style.setProperty('--ld', Math.round(126 * (1 - frac))); }
+    }
+    clearTimeout(watchdog);
+    ring.style.setProperty('--ld', 0);
+    video.src = URL.createObjectURL(new Blob(chunks, { type: 'video/mp4' }));
+    video.load();
+    video.addEventListener('canplay', () => {
+      requestSeek(heroProgress() * video.duration);
+      stage.classList.add('video-ready');
+    }, { once: true });
+  }
+  function failVideo(reason) {
+    if (stage.classList.contains('video-ready')) return;
+    console.warn('Hero video unavailable, showing the still hero:', reason && (reason.message || reason.type || reason));
+    stage.classList.add('video-failed');
+    ring.style.opacity = 0;
+  }
+
+  // The five static-hero gates, identical to the CSS, decided live.
+  const GATES = [
+    '(max-width: 720px)',
+    '(orientation: portrait) and (max-width: 1024px)',
+    '(orientation: portrait) and (pointer: coarse)',
+    '(orientation: landscape) and (pointer: coarse) and (max-height: 560px)',
+    '(prefers-reduced-motion: reduce)'
+  ];
+  let scrubOn = false;
+  function enableScrub() {
+    if (scrubOn) return; scrubOn = true;
+    initHeroOnce();
+    addEventListener('scroll', onScroll, { passive: true });
+    bands.forEach(b => { b.op = -1; b.k = -1; b.on = null; });
+    lastLabel = '';
+    updateCaptions(heroProgress(), performance.now());
+    onScroll();
+  }
+  function disableScrub() {
+    if (!scrubOn) return; scrubOn = false;
+    removeEventListener('scroll', onScroll);
+    if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+  }
+  function applyHeroMode() { if (GATES.some(q => matchMedia(q).matches)) disableScrub(); else enableScrub(); }
+  const MQLS = GATES.map(q => matchMedia(q));
+  MQLS.forEach(m => m.addEventListener('change', applyHeroMode));
+  applyHeroMode();
+
+  // ===== Nav turns solid once the hero has passed =====
+  const nav = $('.nav');
+  let navSolid = null;
+  function navCheck() {
+    const solid = scrollY > innerHeight * 0.6 && ($('.hero-static').offsetParent !== null || hero.getBoundingClientRect().bottom < innerHeight * 1.05);
+    if (solid !== navSolid) { navSolid = solid; nav.classList.toggle('solid', solid); }
+  }
+  addEventListener('scroll', navCheck, { passive: true });
+  navCheck();
+
+  // ===== Entrances, then retire the stagger =====
+  const rvIO = new IntersectionObserver(es => es.forEach(e => {
+    if (!e.isIntersecting) return;
+    e.target.classList.add('in');
+    rvIO.unobserve(e.target);
+    setTimeout(() => e.target.classList.add('settled'), 1400);
+  }), { rootMargin: '0px 0px -12% 0px' });
+  $$('.rv').forEach(el => rvIO.observe(el));
+
+  // Living elements play only on screen; pause everything on hidden tabs.
+  const playIO = new IntersectionObserver(es => es.forEach(e => e.target.classList.toggle('play', e.isIntersecting)));
+  $$('.sec').forEach(s => playIO.observe(s));
+  document.addEventListener('visibilitychange', () => document.body.classList.toggle('paused', document.hidden));
+
+  // Floodlight motes in the close.
+  const motes = $('.motes'); const mr = rng(42);
+  for (let i = 0; i < 18; i++) {
+    const m = document.createElement('i');
+    m.style.left = (mr() * 100).toFixed(1) + '%';
+    m.style.animationDelay = (-mr() * 14).toFixed(2) + 's';
+    m.style.animationDuration = (11 + mr() * 8).toFixed(1) + 's';
+    motes.append(m);
+  }
+
+  // ===== Pitch lines that draw themselves with scroll =====
+  const lineSec = $('.leagues');
+  const lines = $$('.draw', lineSec);
+  let lineD = -1, lineRaf = null, linesOn = false;
+  function drawLines() {
+    lineRaf = null;
+    const r = lineSec.getBoundingClientRect();
+    const p = clamp((innerHeight - r.top) / (r.height * 0.9 + innerHeight * 0.3), 0, 1);
+    const d = Math.round((1 - p) * 1000) / 1000;
+    if (d !== lineD) { lineD = d; lines.forEach((l, i) => l.style.setProperty('--d', clamp(d * (1 + i * 0.12), 0, 1))); }
+  }
+  const onLineScroll = () => { if (linesOn && lineRaf === null) lineRaf = requestAnimationFrame(drawLines); };
+  new IntersectionObserver(([e]) => { linesOn = e.isIntersecting; onLineScroll(); }).observe(lineSec);
+  addEventListener('scroll', onLineScroll, { passive: true });
+
+  // ===== The interactive moment: hold to play the last minute =====
+  const hold = $('#hold'), holdLbl = $('#hold-lbl'), holdMsg = $('#hold-msg'), replay = $('#replay');
+  const mrow = $('#mrow'), tm = $('.tm', mrow), sh = $('#sh');
+  const HOLD_MS = 1800, START = 89 * 60 + 12, END = 90 * 60;
+  let hp = 0, holding = false, done = false, hRaf = null, hLast = 0, lastHp = -1, lastTm = '';
+  function renderHold() {
+    const q = Math.round(hp * 200) / 200;
+    if (q !== lastHp) { lastHp = q; hold.style.setProperty('--p', q); }
+    const s = Math.round(START + (END - START) * hp);
+    const t = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+    if (t !== lastTm) { lastTm = t; tm.textContent = t; }
+  }
+  function holdTick(now) {
+    const dt = Math.min(100, now - (hLast || now)); hLast = now;
+    hp = clamp(hp + (holding ? dt / HOLD_MS : -dt / 900), 0, 1);
+    renderHold();
+    if (hp >= 1) { finish(); hRaf = null; hLast = 0; return; }
+    if (!holding && hp <= 0) { hRaf = null; hLast = 0; return; }
+    hRaf = requestAnimationFrame(holdTick);
+  }
+  function startHold(e) {
+    if (done) return;
+    if (e && e.pointerId !== undefined) hold.setPointerCapture?.(e.pointerId);
+    holding = true; hold.classList.add('pressing');
+    holdMsg.textContent = 'Keep holding...';
+    if (hRaf === null) hRaf = requestAnimationFrame(holdTick);
+  }
+  function endHold() {
+    if (!holding) return;
+    holding = false; hold.classList.remove('pressing');
+    if (!done) { holdMsg.textContent = 'The clock rolled back. Hold all the way.'; if (hRaf === null) hRaf = requestAnimationFrame(holdTick); }
+  }
+  function finish() {
+    done = true; holding = false; hp = 1; renderHold();
+    hold.classList.remove('pressing');
+    hold.disabled = true;
+    sh.textContent = '2';
+    mrow.classList.add('goal');
+    holdLbl.textContent = 'Goal!';
+    holdMsg.textContent = 'That is how fast it feels.';
+    replay.classList.add('show');
+  }
+  function reset() {
+    done = false; hp = 0; lastHp = -1; lastTm = ''; renderHold();
+    hold.disabled = false; sh.textContent = '1'; mrow.classList.remove('goal');
+    holdLbl.textContent = 'Hold to play';
+    holdMsg.textContent = 'Press and hold. Let go and the clock rolls back.';
+    replay.classList.remove('show');
+    hold.focus();
+  }
+  hold.addEventListener('pointerdown', e => { e.preventDefault(); if (REDUCED.matches) finish(); else startHold(e); });
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(t => hold.addEventListener(t, endHold));
+  hold.addEventListener('keydown', e => { if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); if (REDUCED.matches) finish(); else startHold(); } });
+  hold.addEventListener('keyup', e => { if (e.key === ' ' || e.key === 'Enter') endHold(); });
+  hold.addEventListener('contextmenu', e => e.preventDefault());
+  replay.addEventListener('click', reset);
+
+  // ===== Reduced motion, live in both directions =====
+  let pinnedHold = false;
+  function pinToFinalStates() {
+    lines.forEach(l => l.style.setProperty('--d', 0)); lineD = 0;
+    if (!done) { finish(); pinnedHold = true; }
+  }
+  function unpinFinalStates() {
+    lineD = -1; onLineScroll();
+    if (pinnedHold) { pinnedHold = false; reset(); }
+  }
+  REDUCED.addEventListener('change', e => { if (e.matches) pinToFinalStates(); else { unpinFinalStates(); applyHeroMode(); } });
+  if (REDUCED.matches) pinToFinalStates();
+})();
+</script>
+</body>
+</html>
