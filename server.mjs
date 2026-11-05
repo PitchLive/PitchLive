@@ -117,7 +117,8 @@ const server = createServer((req, res) => {
     return sendFile(req, res, fileIn(APP_ROOT, "/index.html"))
   }
 
-  const found = fileIn(LANDING_ROOT, path)
+  // Clean addresses for the static pages: /privacy serves privacy.html.
+  const found = fileIn(LANDING_ROOT, path) ?? (extname(path) ? null : fileIn(LANDING_ROOT, path + ".html"))
   if (found) return sendFile(req, res, found)
   res.writeHead(302, { location: "/" }).end()
 })
