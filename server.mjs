@@ -64,12 +64,22 @@ function sendFile(req, res, { file, size }, { immutable = false } = {}) {
   createReadStream(file).pipe(res)
 }
 
+// Only these request headers go to the API. Passing everything through would include the
+// hosting edge's own routing headers (CDN-Loop, cf-*, rndr-*), which the API's edge reads
+// as a request loop and rejects with a 502.
+const FORWARD = [
+  "accept", "accept-encoding", "accept-language", "authorization", "content-length", "content-type",
+  "cookie", "if-none-match", "if-modified-since", "origin", "referer", "user-agent",
+  "connection", "upgrade", "sec-websocket-key", "sec-websocket-version", "sec-websocket-extensions", "sec-websocket-protocol",
+]
+
 function forwardedHeaders(req) {
-  const headers = { ...req.headers, host: API.host }
-  const client = req.socket.remoteAddress ?? ""
-  headers["x-forwarded-for"] = req.headers["x-forwarded-for"] ? `${req.headers["x-forwarded-for"]}, ${client}` : client
-  headers["x-forwarded-proto"] = req.headers["x-forwarded-proto"] ?? "https"
-  headers["x-forwarded-host"] = req.headers.host ?? ""
+  const headers = { host: API.host }
+  for (const name of FORWARD) if (req.headers[name] !== undefined) headers[name] = req.headers[name]
+  // The visitor's real address, so the API's per-IP rate limits apply to them and not to this server.
+  const visitor = String(req.headers["x-forwarded-for"] ?? req.socket.remoteAddress ?? "").split(",")[0].trim()
+  if (visitor) headers["x-forwarded-for"] = visitor
+  headers["x-forwarded-proto"] = "https"
   return headers
 }
 
