@@ -1,3 +1,4 @@
+import { finalLabel, type Sport } from "../api/sports"
 import infoIcon from "../imports/icons/info.svg"
 import calendarIcon from "../imports/icons/calendar.svg"
 import starIcon from "../imports/icons/star.svg"
@@ -63,6 +64,9 @@ const SPORT_DEFAULT_COUNTRY: Record<string, string> = {
   Baseball: "United States",
   Tennis: "United States",
 }
+
+// Rail sports with live data, and their key in the API ("football" there is American football).
+const SPORT_KEYS: Record<string, Sport> = { Basketball: "basketball", Tennis: "tennis", "Ice Hockey": "hockey", "American Football": "football", Baseball: "baseball" }
 
 const SPORT_LEAGUE_PINS: Record<string, { name: string; country: string }[]> = {
   Basketball: [
@@ -206,7 +210,7 @@ export default function Scores({
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [favs, setFavs] = useState<Record<string, boolean>>(readStarred)
   useEffect(() => writeStarred(favs), [favs])
-  const { matches, matchesLoading, user, favorites, toggleFavorite } = useLive()
+  const { matches, matchesLoading, user, favorites, toggleFavorite, sport: apiSport, setSport: setApiSport } = useLive()
   const myTeams = [...favorites].filter((id) => teams[id])
   const dayKey = new Date(Date.now() + dayOffset * 86_400_000).toDateString()
   const onSelectedDay = (m: Match) => (m.kickoffAt ? new Date(m.kickoffAt).toDateString() === dayKey : dayOffset === 0)
@@ -214,8 +218,11 @@ export default function Scores({
     if ((await toggleFavorite(id)) === "signin") go("signin")
   }
   const [picking, setPicking] = useState(false)
-  const [sport, setSport] = useState("Football")
+  const [sport, setSport] = useState(() => Object.keys(SPORT_KEYS).find((name) => SPORT_KEYS[name] === apiSport) ?? "Football")
   const soccer = sport === "Football" || sport === "Favorites"
+  // Sports we have scores for: football, plus the rail sports the API covers.
+  const covered = soccer || sport in SPORT_KEYS
+  useEffect(() => setApiSport(SPORT_KEYS[sport] ?? "soccer"), [sport, setApiSport])
   const [countryQuery, setCountryQuery] = useState("")
   const sportsRef = useRef<HTMLDivElement>(null)
   const [sportScroll, setSportScroll] = useState({ left: false, right: true })
@@ -266,7 +273,7 @@ export default function Scores({
   const dateLabel = selectedDate.toLocaleDateString("en-GB", { day: "2-digit", month: "2-digit" })
   const relativeDay = dayOffset === 0 ? "TODAY" : dayOffset === -1 ? "YESTERDAY" : dayOffset === 1 ? "TOMORROW" : ""
   const visibleCountries = countries.filter((item) => item.name.toLowerCase().includes(countryQuery.toLowerCase()))
-  const explorerCountry = country ?? SPORT_DEFAULT_COUNTRY[sport] ?? null
+  const explorerCountry = country ?? (covered ? null : SPORT_DEFAULT_COUNTRY[sport]) ?? null
   const selectedCountry = countries.find((item) => item.name === explorerCountry)
   const sportLeaguePins = SPORT_LEAGUE_PINS[sport]
 
@@ -591,9 +598,9 @@ export default function Scores({
           </div>
 
           <div className="space-y-3">
-            {(sport === "Football" || sport === "Favorites") && grouped.map(([lg, ms]) => {
+            {covered && grouped.map(([lg, ms]) => {
               const info = leagueByName[lg]
-              const meta = info?.logo ? { flag: info.logo, country: info.country.toUpperCase() } : { flag: "⚽", country: "" }
+              const meta = info?.logo ? { flag: info.logo, country: info.country.toUpperCase() } : { flag: soccer ? "⚽" : "🏆", country: (info?.country ?? "").toUpperCase() }
               const isCollapsed = collapsed[lg]
               return (
                 <section key={lg} className="overflow-hidden rounded-2xl border border-line bg-panel/50 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.6)] backdrop-blur-sm">
@@ -642,16 +649,16 @@ export default function Scores({
                 </section>
               )
             })}
-            {sport !== "Football" && (sport !== "Favorites" || grouped.length === 0) && (
+            {(!covered || (sport === "Favorites" && grouped.length === 0)) && (
               <div className="grid place-items-center gap-3 rounded-2xl border border-line bg-panel/50 py-16 text-center">
                 <SportIcon src={SPORTS.find((x) => x.name === sport)!.icon} className="h-10 w-10" />
                 <p className="text-mut">{sport === "Favorites" ? "Star a match or follow a club to see it here." : `${sport} coverage is coming soon.`}</p>
               </div>
             )}
-            {sport === "Football" && matchesLoading && <SkeletonRows count={8} height={56} label="Loading matches" />}
-            {sport === "Football" && !matchesLoading && grouped.length === 0 && (
+            {covered && sport !== "Favorites" && matchesLoading && <SkeletonRows count={8} height={56} label="Loading matches" />}
+            {covered && sport !== "Favorites" && !matchesLoading && grouped.length === 0 && (
               <p className="rounded-2xl border border-line bg-panel/50 py-16 text-center text-mut">
-                {dayOffset !== 0 ? `No tracked matches on ${dateLabel}.` : "No matches for this filter."}
+                {dayOffset !== 0 ? `No ${soccer ? "tracked" : sport.toLowerCase()} matches on ${dateLabel}.` : soccer ? "No matches for this filter." : `No ${sport.toLowerCase()} today for this filter.`}
               </p>
             )}
           </div>
@@ -683,7 +690,9 @@ function MatchRow({ m, fav, onFav, onOpen }: { m: Match; fav: boolean; onFav: ()
   const live = m.status === "LIVE" || m.status === "HT"
   const flash = useGoalFlash(m)
   const done = m.status === "FT"
-  const timeLabel = live ? <LiveClock m={m} /> : m.status === "UPCOMING" ? m.kickoff : m.status === "POSTPONED" ? "PPD" : "FT"
+  const timeLabel = live ? <LiveClock m={m} /> : m.status === "UPCOMING" ? m.kickoff : m.status === "POSTPONED" ? "PPD" : m.sport ? finalLabel(m.statusText) : "FT"
+  // Tennis: games per set beside the sets won.
+  const sets = m.sport === "tennis" ? m.linescores : undefined
 
   return (
     <div
@@ -707,8 +716,8 @@ function MatchRow({ m, fav, onFav, onOpen }: { m: Match; fav: boolean; onFav: ()
       <span className={`grid w-14 shrink-0 place-items-center text-center font-mono-num text-[12px] font-semibold ${live ? "text-live" : "text-mut"}`}>{timeLabel}</span>
 
       <div className="flex min-w-0 flex-1 flex-col justify-center gap-1.5 py-2.5 pr-3">
-        <ScoreLine id={m.home} score={m.homeScore} show={!(m.status === "UPCOMING")} win={done && m.homeScore > m.awayScore} live={live} scored={flash === "home"} />
-        <ScoreLine id={m.away} score={m.awayScore} show={!(m.status === "UPCOMING")} win={done && m.awayScore > m.homeScore} live={live} scored={flash === "away"} />
+        <ScoreLine id={m.home} score={m.homeScore} show={!(m.status === "UPCOMING")} win={done && m.homeScore > m.awayScore} live={live} scored={flash === "home"} sets={sets?.home} />
+        <ScoreLine id={m.away} score={m.awayScore} show={!(m.status === "UPCOMING")} win={done && m.awayScore > m.homeScore} live={live} scored={flash === "away"} sets={sets?.away} />
       </div>
 
       <span className="grid w-11 shrink-0 place-items-center border-l border-line-soft text-mut-2 group-hover:text-volt" aria-hidden>
@@ -720,7 +729,7 @@ function MatchRow({ m, fav, onFav, onOpen }: { m: Match; fav: boolean; onFav: ()
   )
 }
 
-function ScoreLine({ id, score, show, win, live, scored = false }: { id: string; score: number; show: boolean; win: boolean; live: boolean; scored?: boolean }) {
+function ScoreLine({ id, score, show, win, live, scored = false, sets }: { id: string; score: number; show: boolean; win: boolean; live: boolean; scored?: boolean; sets?: number[] }) {
   const t = teams[id]
   return (
     <div className="flex items-center gap-2">
@@ -728,8 +737,17 @@ function ScoreLine({ id, score, show, win, live, scored = false }: { id: string;
         <Crest id={id} size={18} />
         <span className={`flex-1 truncate text-[13px] ${scored ? "font-bold text-live" : win ? "font-bold text-fg" : "font-medium text-fg/85"}`}>{t?.name ?? id}</span>
       </span>
+      {show && sets && (
+        <span className="flex gap-2 font-mono-num text-[12px] text-mut" aria-label="Games by set">
+          {sets.map((games, i) => (
+            <span key={i} className="w-2.5 text-center">
+              {games}
+            </span>
+          ))}
+        </span>
+      )}
       {show && (
-        <span className={`w-6 text-right font-mono-num text-[14px] ${scored ? "font-bold text-live" : live ? "font-bold text-volt" : win ? "font-bold text-fg" : "font-semibold text-mut"}`}>
+        <span className={`w-8 text-right font-mono-num text-[14px] ${scored ? "font-bold text-live" : live ? "font-bold text-volt" : win ? "font-bold text-fg" : "font-semibold text-mut"}`}>
           {score}
         </span>
       )}

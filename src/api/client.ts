@@ -1,12 +1,23 @@
 // Thin client for the PitchLive API (server/). Requests go to same-origin /api,
 // which Vite proxies to the server in development.
 
+import type { Sport } from "./sports"
+
+export type Linescores = { home: number[]; away: number[]; homeTb?: (number | null)[]; awayTb?: (number | null)[] }
+
 export type ApiTeamSummary = { id: string; name: string; short: string; color: string; color2: string; logo: string | null }
 
 export type ApiMatch = {
   id: string
   leagueId: string | null
   leagueName?: string | null
+  leagueLogo?: string | null
+  leagueCountry?: string | null
+  /** "soccer" (football) unless it's one of the other sports. */
+  sport?: Sport
+  /** Other sports: ESPN's status line ("4:21 - 3rd", "Final/OT") and the score by period, inning or set. */
+  statusText?: string | null
+  linescores?: Linescores | null
   status: "UPCOMING" | "LIVE" | "HT" | "FT" | "POSTPONED"
   minute: number | null
   period: number | null
@@ -160,7 +171,7 @@ export const api = {
   leagueMatches: (slug: string, kind: "results" | "fixtures") =>
     request<{ matches: ApiMatch[] }>("GET", `/api/leagues/${encodeURIComponent(slug)}/matches?kind=${kind}`),
 
-  matches: (date: string) => request<{ matches: ApiMatch[] }>("GET", `/api/matches?date=${date}&limit=300`),
+  matches: (date: string, sport: Sport = "soccer") => request<{ matches: ApiMatch[] }>("GET", `/api/matches?date=${date}&sport=${sport}&limit=400`),
   match: (id: string) => request<{ match: ApiMatch; chat: ChatMessage[] }>("GET", `/api/matches/${encodeURIComponent(id)}`),
   details: (id: string) => request<{ details: MatchDetails }>("GET", `/api/matches/${encodeURIComponent(id)}/details`),
   teamMatches: (id: string) => request<{ matches: ApiMatch[] }>("GET", `/api/teams/${encodeURIComponent(id)}/matches`),

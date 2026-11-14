@@ -1,3 +1,4 @@
+import { hasGoals, isSport, sportOf, type Sport } from "./sports"
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { registerTeam, teams, type Match } from "../data"
 import { leagueByName, leagueBySlug, registerLeague } from "../leagueInfo"
@@ -19,6 +20,9 @@ type LiveState = {
   matchesLoading: boolean
   connected: boolean
   user: User | null
+  /** The sport on screen; `matches` holds only that sport. */
+  sport: Sport
+  setSport: (sport: Sport) => void
   matches: Match[]
   getMatch: (id: string) => Match | undefined
   loadMatch: (id: string) => Promise<ChatMessage[]>
@@ -45,6 +49,16 @@ type LiveState = {
 
 const LiveContext = createContext<LiveState | null>(null)
 
+const SPORT_KEY = "pitchlive.sport"
+const savedSport: Sport = (() => {
+  try {
+    const s = localStorage.getItem(SPORT_KEY)
+    return isSport(s) ? s : "soccer"
+  } catch {
+    return "soccer"
+  }
+})()
+
 export function useLive() {
   const ctx = useContext(LiveContext)
   if (!ctx) throw new Error("useLive must be used inside <LiveProvider>")
@@ -64,7 +78,9 @@ function toMatch(a: ApiMatch, prev: Match | undefined, receivedAt: number): Matc
   registerTeam(a.away)
   const next: Match = {
     id: a.id,
-    league: a.leagueId ? (leagueBySlug[a.leagueId]?.name ?? (a.leagueName ? registerLeague({ slug: a.leagueId, name: a.leagueName }).name : "Other competitions")) : "Other competitions",
+    league: a.leagueId
+      ? (leagueBySlug[a.leagueId]?.name ?? (a.leagueName ? registerLeague({ slug: a.leagueId, name: a.leagueName, country: a.leagueCountry ?? undefined, logo: a.leagueLogo }).name : "Other competitions"))
+      : "Other competitions",
     home: a.home.id,
     away: a.away.id,
     homeScore: a.homeScore,
@@ -79,13 +95,19 @@ function toMatch(a: ApiMatch, prev: Match | undefined, receivedAt: number): Matc
     clockSeconds: a.clockSeconds ?? undefined,
     clockDisplay: a.clockDisplay ?? undefined,
     clockAt: receivedAt - a.clockAgeMs,
+    sport: a.sport && a.sport !== "soccer" ? a.sport : undefined,
+    statusText: a.statusText ?? undefined,
+    linescores: a.linescores ?? undefined,
   }
   // Remember when a goal arrives so score rows can flash, Flashscore-style.
   if (prev) {
     next.lastGoalAt = prev.lastGoalAt
     next.lastGoalSide = prev.lastGoalSide
-    if (next.homeScore > prev.homeScore) [next.lastGoalAt, next.lastGoalSide] = [receivedAt, "home"]
-    else if (next.awayScore > prev.awayScore) [next.lastGoalAt, next.lastGoalSide] = [receivedAt, "away"]
+    // Goals flash; baskets, points and runs don't.
+    if (hasGoals(sportOf(next))) {
+      if (next.homeScore > prev.homeScore) [next.lastGoalAt, next.lastGoalSide] = [receivedAt, "home"]
+      else if (next.awayScore > prev.awayScore) [next.lastGoalAt, next.lastGoalSide] = [receivedAt, "away"]
+    }
   }
   if (prev && prev.status === "LIVE" && next.status === "LIVE" && prev.period === next.period) {
     const running = elapsedSeconds(prev, receivedAt)
@@ -106,7 +128,7 @@ const line = (m: Match) => `${name(m.home)} ${m.homeScore}–${m.awayScore} ${na
 function alertsFor(prev: Match, next: Match, at: number): Alert[] {
   const base = { matchId: next.id, at, read: false }
   const out: Alert[] = []
-  if (next.homeScore > prev.homeScore || next.awayScore > prev.awayScore) {
+  if (hasGoals(sportOf(next)) && (next.homeScore > prev.homeScore || next.awayScore > prev.awayScore)) {
     const scorer = next.homeScore > prev.homeScore ? next.home : next.away
     const min = next.minute != null ? ` · ${next.minute}'` : ""
     out.push({ ...base, id: `${next.id}-goal-${next.homeScore}-${next.awayScore}`, kind: "goal", title: `GOAL · ${name(scorer)}`, body: `${line(next)}${min}` })
@@ -123,6 +145,8 @@ const utcDay = (offset: number) => new Date(Date.now() + offset * 86_400_000).to
 export function LiveProvider({ children }: { children: ReactNode }) {
   const [online, setOnline] = useState<boolean | null>(null)
   const [matchesLoaded, setMatchesLoaded] = useState(false)
+  const [sport, setSportState] = useState<Sport>(savedSport)
+  const sportRef = useRef(sport)
   const [connected, setConnected] = useState(false)
   const [user, setUser] = useState<User | null>(null)
   const [byId, setById] = useState<Map<string, Match>>(new Map())
@@ -200,9 +224,28 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   }, [loadTable, refreshSummaries])
 
   const refreshMatches = useCallback(async () => {
-    const days = await Promise.all([-1, 0, 1].map((o) => api.matches(utcDay(o))))
+    const days = await Promise.all([-1, 0, 1].map((o) => api.matches(utcDay(o), sportRef.current)))
     upsert(days.flatMap((d) => d.matches))
   }, [upsert])
+
+  /** Switch sport: load its matches (football is always loaded first). */
+  const setSport = useCallback(
+    (next: Sport) => {
+      if (next === sportRef.current) return
+      sportRef.current = next
+      setSportState(next)
+      try {
+        localStorage.setItem(SPORT_KEY, next)
+      } catch {
+        // Private windows can refuse storage; the choice then lasts for this visit.
+      }
+      setMatchesLoaded(false)
+      refreshMatches()
+        .catch(() => {})
+        .finally(() => setMatchesLoaded(true))
+    },
+    [refreshMatches],
+  )
 
   // Initial check: is the API there, and who is signed in?
   useEffect(() => {
@@ -352,12 +395,14 @@ export function LiveProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const value = useMemo<LiveState>(() => {
-    const list = [...byId.values()].sort((a, b) => (a.kickoffAt ?? "").localeCompare(b.kickoffAt ?? ""))
+    const list = [...byId.values()].filter((m) => sportOf(m) === sport).sort((a, b) => (a.kickoffAt ?? "").localeCompare(b.kickoffAt ?? ""))
     return {
       online,
       matchesLoading: online === null || (online === true && !matchesLoaded),
       connected,
       user,
+      sport,
+      setSport,
       matches: list,
       getMatch: (id) => byId.get(id),
       loadMatch,
@@ -400,7 +445,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       summaries,
       fetchLeagueMatches,
     }
-  }, [online, matchesLoaded, connected, user, byId, favorites, alerts, loadMatch, loadTeamMatches, watchMatch, tables, tableErrors, loadTable, summaries, fetchLeagueMatches])
+  }, [online, matchesLoaded, connected, user, byId, favorites, alerts, loadMatch, loadTeamMatches, watchMatch, tables, tableErrors, loadTable, summaries, fetchLeagueMatches, sport, setSport])
 
   return <LiveContext.Provider value={value}>{children}</LiveContext.Provider>
 }

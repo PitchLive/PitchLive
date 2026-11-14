@@ -66,6 +66,10 @@ export type Match = {
   clockAt?: number // Date.now() at which clockSeconds was current
   lastGoalAt?: number // Date.now() when a goal was last seen arriving live
   lastGoalSide?: "home" | "away"
+  /** Other sports (football when absent): the feed's status line and the score by period, inning or set. */
+  sport?: "soccer" | "tennis" | "basketball" | "hockey" | "football" | "baseball"
+  statusText?: string
+  linescores?: { home: number[]; away: number[]; homeTb?: (number | null)[]; awayTb?: (number | null)[] }
 }
 
 // Real clubs. Brand colours are used for the generated fallback crest;
