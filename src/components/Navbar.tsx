@@ -3,7 +3,7 @@ import { useLive } from "../api/LiveProvider"
 import { teams } from "../data"
 import { leagueCatalog } from "../leagueInfo"
 import { Crest, LeagueLogo } from "./ui"
-import logo from "../imports/Gemini_Generated_Image_gjm08ggjm08ggjm0.png"
+import Wordmark from "./Wordmark"
 
 const NAV: { key: Page; label: string }[] = [
   { key: "home", label: "Home" },
@@ -52,16 +52,19 @@ export default function Navbar({
           .map((l) => ({ kind: "League", label: l.name, sub: l.country, id: l.name })),
         ...Object.values(teams)
           .filter((t) => t.name.toLowerCase().includes(needle))
+          // The same club can be listed twice (bundled and from the feed); show it once.
+          .filter((t, i, all) => all.findIndex((x) => x.name === t.name) === i)
           .slice(0, 6)
           .map((t) => ({ kind: "Team", label: t.name, sub: t.league ?? t.city, id: t.id })),
       ]
     : []
 
   return (
-    <header className="sticky top-0 z-50 border-b border-white/[0.06] glass">
-      <div className="mx-auto flex h-20 max-w-[1400px] items-center gap-4 px-4 sm:px-6 lg:h-24">
-        <button onClick={() => go("home")} className="flex items-center shrink-0" aria-label="PITCHLIVE home">
-          <img src={logo} alt="PITCHLIVE" className="h-14 w-auto object-contain sm:h-16 lg:h-[72px]" />
+    // Painted under the notch (viewport-fit=cover); the safe-area padding keeps the content below it.
+    <header className="sticky top-0 z-50 border-b border-white/[0.06] glass" style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}>
+      <div className="mx-auto flex h-16 max-w-[1400px] items-center gap-3 px-4 sm:h-20 sm:gap-4 sm:px-6 lg:h-[88px]">
+        <button onClick={() => go("home")} className="flex shrink-0 items-center rounded-lg text-[15px] sm:text-[17px] lg:text-[19px]" aria-label="PitchLive home">
+          <Wordmark className="h-8 sm:h-9 lg:h-10" />
         </button>
 
         <nav className="ml-4 hidden items-center gap-1 lg:flex">
@@ -78,22 +81,9 @@ export default function Navbar({
           ))}
         </nav>
 
-        <div className="relative ml-auto hidden w-full max-w-xs md:block">
-          <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 transition-colors focus-within:border-volt/50 focus-within:bg-white/[0.06]">
-            <svg viewBox="0 0 24 24" className="h-4 w-4 text-mut-2" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="11" cy="11" r="7" />
-              <path d="m20 20-3-3" strokeLinecap="round" />
-            </svg>
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              onFocus={() => setOpen(true)}
-              onBlur={() => setTimeout(() => setOpen(false), 150)}
-              placeholder="Search 340+ clubs & 18 leagues…"
-              className="w-full bg-transparent text-sm text-fg placeholder:text-mut-2 focus:outline-none"
-            />
-            <kbd className="hidden rounded border border-line px-1.5 text-[10px] text-mut-2 lg:block">/</kbd>
-          </div>
+        <div className="ml-auto flex min-w-0 items-center justify-end gap-2 sm:gap-3">
+        <div className="relative hidden w-full max-w-xs md:block lg:w-72">
+          <SearchField q={q} setQ={setQ} setOpen={setOpen} />
           {open && results.length > 0 && (
             <div className="absolute mt-2 w-full overflow-hidden rounded-2xl border border-white/10 bg-panel/95 py-1 shadow-2xl shadow-black/60 backdrop-blur-xl">
               {results.map((r) => (
@@ -140,16 +130,48 @@ export default function Navbar({
           onClick={() => setMenu((m) => !m)}
           aria-label={menu ? "Close menu" : "Open menu"}
           aria-expanded={menu}
-          className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-fg lg:hidden"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-fg lg:hidden"
         >
           <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
+            {menu ? <path d="M6 6l12 12M18 6 6 18" strokeLinecap="round" /> : <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />}
           </svg>
         </button>
+        </div>
       </div>
 
       {menu && (
-        <div className="border-t border-line px-4 py-3 lg:hidden">
+        <div className="max-h-[calc(100dvh-4rem)] overflow-y-auto overscroll-contain border-t border-line px-4 py-3 lg:hidden">
+          <div className="mb-2 md:hidden">
+            <SearchField q={q} setQ={setQ} setOpen={setOpen} />
+            {needle && (
+              <div className="mt-2 overflow-hidden rounded-2xl border border-white/10 bg-panel/95 py-1">
+                {results.length === 0 && <p className="px-3 py-3 text-sm text-mut">Nothing found for &ldquo;{q.trim()}&rdquo;.</p>}
+                {results.map((r) => (
+                  <button
+                    key={r.kind + r.id}
+                    onClick={() => {
+                      setQ("")
+                      setMenu(false)
+                      if (r.kind === "Team") onTeam(r.id)
+                      else onLeague(r.id)
+                    }}
+                    className="flex min-h-11 w-full items-center gap-3 px-3 py-2 text-left"
+                  >
+                    {r.kind === "Team" ? (
+                      <Crest id={r.id} size={26} />
+                    ) : (
+                      <LeagueLogo src={leagueCatalog.find((l) => l.name === r.id)?.logo} accent={leagueCatalog.find((l) => l.name === r.id)?.accent ?? "#3d7bff"} size={26} label="" />
+                    )}
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold text-fg">{r.label}</span>
+                      <span className="text-[11px] text-mut">{r.sub}</span>
+                    </span>
+                    <span className="rounded bg-line px-1.5 py-0.5 text-[10px] font-semibold uppercase text-mut">{r.kind}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           {NAV.map((n) => (
             <button
               key={n.key}
@@ -157,7 +179,7 @@ export default function Navbar({
                 go(n.key)
                 setMenu(false)
               }}
-              className={`block w-full rounded-lg px-3 py-2.5 text-left text-sm font-semibold ${
+              className={`flex min-h-11 w-full items-center rounded-lg px-3 text-left text-[15px] font-semibold ${
                 page === n.key ? "bg-panel text-volt" : "text-mut"
               }`}
             >
@@ -186,7 +208,7 @@ function AccountButton({ go, onTeam }: { go: (p: Page) => void; onTeam: (id: str
     return (
       <button
         onClick={() => go("signin")}
-        className="shrink-0 rounded-full bg-volt px-4 py-2.5 text-sm font-bold text-ink transition-shadow hover:shadow-[0_0_20px_rgba(61,255,136,0.5)] sm:px-5"
+        className="h-11 shrink-0 whitespace-nowrap rounded-full bg-volt px-4 text-sm font-bold text-ink hover:shadow-[0_0_20px_rgba(61,255,136,0.5)] sm:px-5"
       >
         Sign In
       </button>
@@ -198,7 +220,7 @@ function AccountButton({ go, onTeam }: { go: (p: Page) => void; onTeam: (id: str
         onClick={() => setOpen((o) => !o)}
         aria-label="Account"
         aria-expanded={open}
-        className="relative grid h-10 w-10 place-items-center rounded-full bg-gradient-to-br from-volt to-cobalt font-display text-sm font-black text-ink ring-2 ring-white/10"
+        className="relative grid h-11 w-11 place-items-center rounded-full bg-gradient-to-br from-volt to-cobalt font-display text-sm font-black text-ink ring-2 ring-white/10"
       >
         {user.displayName.slice(0, 1).toUpperCase()}
         {online && (
@@ -245,6 +267,32 @@ function AccountButton({ go, onTeam }: { go: (p: Page) => void; onTeam: (id: str
           </button>
         </div>
       )}
+    </div>
+  )
+}
+
+/** The search box (header on tablets and up, the menu on phones). */
+function SearchField({ q, setQ, setOpen }: { q: string; setQ: (v: string) => void; setOpen: (v: boolean) => void }) {
+  return (
+    <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-4 py-2.5 transition-colors focus-within:border-volt/50 focus-within:bg-white/[0.06]">
+      <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-mut-2" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+        <circle cx="11" cy="11" r="7" />
+        <path d="m20 20-3-3" strokeLinecap="round" />
+      </svg>
+      <input
+        type="search"
+        enterKeyHint="search"
+        autoCapitalize="none"
+        autoCorrect="off"
+        aria-label="Search clubs and leagues"
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="Search clubs & leagues…"
+        className="w-full min-w-0 bg-transparent text-sm text-fg placeholder:text-mut-2 focus:outline-none [&::-webkit-search-cancel-button]:hidden"
+      />
+      <kbd className="hidden rounded border border-line px-1.5 text-[10px] text-mut-2 lg:block">/</kbd>
     </div>
   )
 }

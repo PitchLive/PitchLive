@@ -533,8 +533,8 @@ export default function Scores({
           <div className="no-scrollbar sticky top-32 max-h-[calc(100vh-9rem)] overflow-y-auto pb-8">{rail}</div>
         </aside>
 
-        {/* Match feed */}
-        <div>
+        {/* Match feed (min-w-0: a grid item otherwise grows to its widest child and runs off a phone screen) */}
+        <div className="min-w-0">
           {explorerCountry && selectedCountry && sport !== "Favorites" && sport !== "More" ? (
             <CountryExplorer
               country={explorerCountry}
