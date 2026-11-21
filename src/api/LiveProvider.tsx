@@ -16,6 +16,8 @@ export type Alert = { id: string; matchId: string; kind: "goal" | "kickoff" | "h
 type LiveState = {
   /** null while the first API check is running; false when the service can't be reached. */
   online: boolean | null
+  /** When the API first failed to answer (null while it answers): a recent time means it's probably waking up. */
+  offlineSince: number | null
   /** True until the first batch of matches has arrived. */
   matchesLoading: boolean
   connected: boolean
@@ -48,6 +50,11 @@ type LiveState = {
 }
 
 const LiveContext = createContext<LiveState | null>(null)
+
+// Retries while the API is unreachable: quick at first (a sleeping server wakes in 30–60 s), then every 15 s.
+const RETRY_MS = [3000, 3000, 5000, 5000, 8000, 10_000, 15_000]
+/** How long a missing API is presented as "waking up" before we call it unavailable. */
+export const WAKING_MS = 90_000
 
 const SPORT_KEY = "pitchlive.sport"
 const savedSport: Sport = (() => {
@@ -144,6 +151,10 @@ const utcDay = (offset: number) => new Date(Date.now() + offset * 86_400_000).to
 
 export function LiveProvider({ children }: { children: ReactNode }) {
   const [online, setOnline] = useState<boolean | null>(null)
+  const onlineRef = useRef(online)
+  onlineRef.current = online
+  // When the API first failed to answer, while it's still not answering.
+  const [offlineSince, setOfflineSince] = useState<number | null>(null)
   const [matchesLoaded, setMatchesLoaded] = useState(false)
   const [sport, setSportState] = useState<Sport>(savedSport)
   const sportRef = useRef(sport)
@@ -247,21 +258,41 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     [refreshMatches],
   )
 
-  // Initial check: is the API there, and who is signed in?
+  // Initial check: is the API there, and who is signed in? The free server sleeps when idle and
+  // takes up to a minute to wake, so keep asking (sooner when the tab or network comes back).
   useEffect(() => {
     let cancelled = false
-    api
-      .me()
-      .then(async ({ user }) => {
-        if (cancelled) return
-        setUser(user)
-        setOnline(true)
-        refreshSummaries().catch(() => {})
-        await refreshMatches().finally(() => setMatchesLoaded(true))
-      })
-      .catch(() => !cancelled && setOnline(false))
+    let attempt = 0
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const check = () => {
+      clearTimeout(timer)
+      api
+        .me()
+        .then(async ({ user }) => {
+          if (cancelled) return
+          setUser(user)
+          setOnline(true)
+          setOfflineSince(null)
+          refreshSummaries().catch(() => {})
+          await refreshMatches().finally(() => setMatchesLoaded(true))
+        })
+        .catch(() => {
+          if (cancelled) return
+          setOnline(false)
+          setOfflineSince((since) => since ?? Date.now())
+          timer = setTimeout(check, RETRY_MS[Math.min(attempt++, RETRY_MS.length - 1)])
+        })
+    }
+    const again = () => onlineRef.current === false && check()
+    const onVisible = () => document.visibilityState === "visible" && again()
+    check()
+    window.addEventListener("online", again)
+    document.addEventListener("visibilitychange", onVisible)
     return () => {
       cancelled = true
+      clearTimeout(timer)
+      window.removeEventListener("online", again)
+      document.removeEventListener("visibilitychange", onVisible)
     }
   }, [refreshMatches, refreshSummaries])
 
@@ -398,6 +429,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
     const list = [...byId.values()].filter((m) => sportOf(m) === sport).sort((a, b) => (a.kickoffAt ?? "").localeCompare(b.kickoffAt ?? ""))
     return {
       online,
+      offlineSince,
       matchesLoading: online === null || (online === true && !matchesLoaded),
       connected,
       user,
@@ -445,7 +477,7 @@ export function LiveProvider({ children }: { children: ReactNode }) {
       summaries,
       fetchLeagueMatches,
     }
-  }, [online, matchesLoaded, connected, user, byId, favorites, alerts, loadMatch, loadTeamMatches, watchMatch, tables, tableErrors, loadTable, summaries, fetchLeagueMatches, sport, setSport])
+  }, [online, matchesLoaded, connected, user, byId, favorites, alerts, loadMatch, loadTeamMatches, watchMatch, tables, tableErrors, loadTable, summaries, fetchLeagueMatches, sport, setSport, offlineSince])
 
   return <LiveContext.Provider value={value}>{children}</LiveContext.Provider>
 }

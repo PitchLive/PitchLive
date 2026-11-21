@@ -11,6 +11,7 @@ import SignIn from "./pages/SignIn"
 import Notifications from "./pages/Notifications"
 import InfoPage, { type InfoPageKind } from "./pages/InfoPage"
 import { LiveProvider, useLive } from "./api/LiveProvider"
+import { useServerState } from "./api/useWaking"
 import logo from "./imports/Gemini_Generated_Image_gjm08ggjm08ggjm0.png"
 
 export default function App() {
@@ -28,7 +29,8 @@ function toTop() {
 }
 
 function Shell() {
-  const { matches, online } = useLive()
+  const { matches } = useLive()
+  const server = useServerState()
   const [page, setPage] = useState<Page>("home")
   const [matchId, setMatchId] = useState<string | null>(null)
   const [teamId, setTeamId] = useState<string | null>(null)
@@ -68,9 +70,12 @@ function Shell() {
       </a>
       <Navbar page={page} go={go} onTeam={openTeam} onLeague={openLeague} />
       <ScoreTicker onOpen={openMatch} onAll={() => go("scores")} />
-      {online === false && (
-        <div className="border-b border-amber/30 bg-amber/10 px-4 py-2 text-center text-[13px] text-amber">
-          Live scores are unavailable right now. We&rsquo;ll reconnect automatically.
+      {server && (
+        <div role="status" className="flex items-center justify-center gap-2 border-b border-amber/30 bg-amber/10 px-4 py-2 text-center text-[13px] text-amber">
+          {server === "waking" && <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-amber/30 border-t-amber" aria-hidden />}
+          {server === "waking"
+            ? "Waking up live scores. This can take up to a minute after a quiet spell."
+            : "Live scores are unavailable right now. We’re still trying and will connect as soon as they’re back."}
         </div>
       )}
 

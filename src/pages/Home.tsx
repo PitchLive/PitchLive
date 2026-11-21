@@ -1,3 +1,4 @@
+import { useServerState } from "../api/useWaking"
 import { useEffect, useState } from "react"
 import { teams, type Match } from "../data"
 import { useLive } from "../api/LiveProvider"
@@ -15,6 +16,7 @@ const isToday = (m: Match) => !m.kickoffAt || new Date(m.kickoffAt).toDateString
 
 export default function Home({ onOpen, onLeague, go }: { onOpen: (id: string) => void; onLeague: (name: string) => void; go: (p: Page) => void }) {
   const { matches, online, user, summaries } = useLive()
+  const server = useServerState()
   const [league, setLeague] = useState("All")
 
   const live = matches.filter(isLive)
@@ -139,7 +141,7 @@ export default function Home({ onOpen, onLeague, go }: { onOpen: (id: string) =>
               </>
             ) : (
               <div className="grid flex-1 place-items-center text-center text-sm text-mut">
-                {online === false ? "Live scores are unavailable right now." : online === null ? "Loading live scores…" : "No matches scheduled in the next day."}
+                {server === "waking" ? "Waking up live scores…" : online === false ? "Live scores are unavailable right now. Still trying…" : online === null ? "Loading live scores…" : "No matches scheduled in the next day."}
               </div>
             )}
           </div>
