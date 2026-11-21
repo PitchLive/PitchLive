@@ -5,11 +5,13 @@ import { api, type MatchDetails } from "../api/client"
 import type { Page } from "../components/Navbar"
 import { Crest, LeagueLogo, LiveBadge } from "../components/ui"
 import LiveChat from "../components/LiveChat"
-import { CommentaryTab, LineupsTab, StandingsTab, StatsTab, SummaryTab, scorers } from "../components/MatchCentre"
+import { CommentaryTab, LineupsTab, PeriodScores, StandingsTab, StatsTab, SummaryTab, scorers } from "../components/MatchCentre"
 import { leagueByName } from "../leagueInfo"
 
 const TABS = ["Summary", "Stats", "Line-ups", "Commentary", "Table", "Chat"] as const
 type Tab = (typeof TABS)[number]
+// Other sports: the score by period (no line-ups, commentary or table yet); tennis has no team stats.
+const tabsFor = (m: Match): readonly Tab[] => (!m.sport ? TABS : m.sport === "tennis" ? ["Summary", "Chat"] : ["Summary", "Stats", "Chat"])
 
 /** Live stats, line-ups, events and commentary: fetched once, then pushed over the socket while live. */
 function useMatchDetails(id: string) {
@@ -129,7 +131,7 @@ export default function MatchDetail({
         <div className="min-w-0">
           {/* Tabs */}
           <div className="no-scrollbar mb-4 flex gap-1 overflow-x-auto rounded-2xl border border-white/10 bg-ink-2/80 p-1">
-            {TABS.map((t) => (
+            {tabsFor(m).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -137,14 +139,14 @@ export default function MatchDetail({
                   tab === t ? "bg-volt text-ink" : "text-mut hover:text-fg"
                 }`}
               >
-                {t}
+                {t === "Summary" && m.sport ? (m.sport === "tennis" ? "Sets" : "Score") : t}
               </button>
             ))}
           </div>
 
           {tab === "Summary" && (
             <div className="space-y-4">
-              <SummaryTab match={m} details={shown} />
+              {m.sport ? <PeriodScores match={m} /> : <SummaryTab match={m} details={shown} />}
               <MatchInfo m={m} onLeague={onLeague} />
             </div>
           )}

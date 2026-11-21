@@ -11,7 +11,8 @@ import SignIn from "./pages/SignIn"
 import Notifications from "./pages/Notifications"
 import InfoPage, { type InfoPageKind } from "./pages/InfoPage"
 import { LiveProvider, useLive } from "./api/LiveProvider"
-import logo from "./imports/Gemini_Generated_Image_gjm08ggjm08ggjm0.png"
+import { useServerState } from "./api/useWaking"
+import Wordmark from "./components/Wordmark"
 
 export default function App() {
   return (
@@ -28,7 +29,8 @@ function toTop() {
 }
 
 function Shell() {
-  const { matches, online } = useLive()
+  const { matches } = useLive()
+  const server = useServerState()
   const [page, setPage] = useState<Page>("home")
   const [matchId, setMatchId] = useState<string | null>(null)
   const [teamId, setTeamId] = useState<string | null>(null)
@@ -62,19 +64,22 @@ function Shell() {
   const liveCount = matches.filter((m) => m.status === "LIVE" || m.status === "HT").length
 
   return (
-    <div className="min-h-screen bg-ink text-fg">
+    <div className="min-h-svh bg-ink text-fg">
       <a href="#main" className="skip-link">
         Skip to content
       </a>
       <Navbar page={page} go={go} onTeam={openTeam} onLeague={openLeague} />
       <ScoreTicker onOpen={openMatch} onAll={() => go("scores")} />
-      {online === false && (
-        <div className="border-b border-amber/30 bg-amber/10 px-4 py-2 text-center text-[13px] text-amber">
-          Live scores are unavailable right now. We&rsquo;ll reconnect automatically.
+      {server && (
+        <div role="status" className="flex items-center justify-center gap-2 border-b border-amber/30 bg-amber/10 px-4 py-2 text-center text-[13px] text-amber">
+          {server === "waking" && <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-amber/30 border-t-amber" aria-hidden />}
+          {server === "waking"
+            ? "Waking up live scores. This can take up to a minute after a quiet spell."
+            : "Live scores are unavailable right now. We’re still trying and will connect as soon as they’re back."}
         </div>
       )}
 
-      <main id="main" tabIndex={-1} className="pb-24 outline-none">
+      <main id="main" tabIndex={-1} className="pb-24 outline-none" style={{ paddingBottom: "calc(6rem + env(safe-area-inset-bottom, 0px))" }}>
         {page === "home" && <Home onOpen={openMatch} onLeague={(l) => openLeague(l || null)} go={go} />}
         {page === "scores" && <Scores onOpen={openMatch} onTeam={openTeam} onLeague={openLeague} go={go} />}
         {page === "competitions" && <Competitions onTeam={openTeam} onOpen={openMatch} league={league} setLeague={openLeague} />}
@@ -93,7 +98,7 @@ function Shell() {
       <footer className="border-t border-white/[0.06]">
         <div className="mx-auto flex max-w-[1400px] flex-col items-center justify-between gap-4 px-6 py-8 sm:flex-row">
           <button onClick={() => go("home")} aria-label="PitchLive home" className="shrink-0">
-            <img src={logo} alt="PITCHLIVE" className="h-10 w-auto object-contain" />
+            <Wordmark className="h-8 text-[15px]" />
           </button>
           <p className="text-[12px] text-mut-2">
             Scores, fixtures and tables: ESPN. Not affiliated with any club or competition.
@@ -112,7 +117,8 @@ function Shell() {
       {page !== "scores" && liveCount > 0 && (
         <button
           onClick={() => go("scores")}
-          className="fixed bottom-5 right-5 z-40 flex items-center gap-2.5 rounded-full bg-volt px-5 py-3.5 font-bold text-ink shadow-[0_8px_30px_rgba(61,255,136,0.45)] transition-transform hover:scale-105"
+          style={{ bottom: "calc(1.25rem + env(safe-area-inset-bottom, 0px))", right: "calc(1.25rem + env(safe-area-inset-right, 0px))" }}
+          className="fixed z-40 flex items-center gap-2.5 rounded-full bg-volt px-5 py-3.5 font-bold text-ink shadow-[0_8px_30px_rgba(61,255,136,0.45)] transition-transform hover:scale-105"
         >
           <span className="relative flex h-2.5 w-2.5">
             <span className="live-dot absolute inline-flex h-full w-full rounded-full bg-live" />

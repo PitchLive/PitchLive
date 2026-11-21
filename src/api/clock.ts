@@ -1,3 +1,4 @@
+import { finalLabel, liveLabel } from "./sports"
 import { useSyncExternalStore } from "react"
 import type { Match } from "../data"
 
@@ -56,6 +57,13 @@ const pad = (n: number) => String(Math.floor(n)).padStart(2, "0")
 
 /** "67:23", "45+2:05", "HT", or the minute when no clock is available. */
 export function clockLabel(m: Match, at: number): string {
+  if (m.sport && m.sport !== "soccer") {
+    // Other sports: the feed's own status line, shortened ("Q3 4:21", "Top 5th", "Set 2", "F/OT").
+    if (m.status === "UPCOMING") return m.kickoff ?? ""
+    if (m.status === "POSTPONED") return "PPD"
+    if (m.status === "HT") return "HT"
+    return m.status === "FT" ? finalLabel(m.statusText) : liveLabel(m.sport, m.league, m.statusText)
+  }
   if (m.status === "HT") return "HT"
   if (m.status === "FT") return "FT"
   if (m.status === "UPCOMING") return m.kickoff ?? ""

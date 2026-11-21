@@ -1,3 +1,4 @@
+import { periodLabels } from "../api/sports"
 import { useState } from "react"
 import { teams, type Match } from "../data"
 import type { CommentaryLine, Lineup, LineupPlayer, MatchDetails, MatchEvent, StatRow } from "../api/client"
@@ -116,7 +117,7 @@ export function scorers(details: MatchDetails | null, side: Side) {
 
 /* ───────────── Stats ───────────── */
 
-const num = (v: string) => parseFloat(v.replace(/[^\d.]/g, "")) || 0
+const num = (v: string) => parseFloat(v) || 0 // the leading number: "52%" is 52, "12-27" is 12
 
 export function StatsTab({ match, details }: { match: Match; details: MatchDetails | null }) {
   const stats = details?.stats ?? []
@@ -432,4 +433,64 @@ export function StandingsTab({ match, onTeam, onOpen, onLeague }: { match: Match
 
 function Empty({ text }: { text: string }) {
   return <p className="card rounded-2xl px-6 py-14 text-center text-sm text-mut">{text}</p>
+}
+
+/* ───────────── Other sports: score by period ───────────── */
+
+/** The score by quarter, period, inning or set, like a scoreboard. */
+export function PeriodScores({ match }: { match: Match }) {
+  const ls = match.linescores
+  if (!ls || !ls.home.length) return <Empty text={match.status === "UPCOMING" ? "The score by period appears here once play starts." : "There's no period-by-period score for this match."} />
+  const sport = match.sport ?? "soccer"
+  const labels = periodLabels(sport, match.league, Math.max(ls.home.length, ls.away.length))
+  const row = (side: "home" | "away") => {
+    const id = side === "home" ? match.home : match.away
+    const tb = side === "home" ? ls.homeTb : ls.awayTb
+    const other = side === "home" ? ls.away : ls.home
+    return (
+      <tr className="border-t border-line-soft">
+        <th scope="row" className="flex items-center gap-2.5 py-3 pl-4 pr-3 text-left text-[13px] font-semibold">
+          <Crest id={id} size={20} />
+          <span className="truncate">{teams[id]?.name ?? id}</span>
+        </th>
+        {labels.map((l, i) => {
+          const mine = ls[side][i]
+          const won = mine != null && other[i] != null && mine > other[i]!
+          return (
+            <td key={l} className={`px-2 text-center font-mono-num text-[13px] ${won ? "font-bold text-fg" : "text-mut"}`}>
+              {mine ?? "–"}
+              {tb?.[i] != null && <sup className="ml-0.5 text-[9px]">{tb[i]}</sup>}
+            </td>
+          )
+        })}
+        <td className="px-4 text-center font-mono-num text-[15px] font-extrabold text-volt">{side === "home" ? match.homeScore : match.awayScore}</td>
+      </tr>
+    )
+  }
+  return (
+    <div className="overflow-x-auto rounded-2xl border border-line bg-panel/50">
+      <table className="w-full min-w-[420px]">
+        <caption className="px-4 pb-2 pt-4 text-left text-[11px] font-bold uppercase tracking-widest text-mut">
+          {sport === "tennis" ? "Sets" : sport === "baseball" ? "Innings" : "Score by period"}
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col" className="w-full" />
+            {labels.map((l) => (
+              <th key={l} scope="col" className="px-2 pb-2 text-center font-mono-num text-[10px] font-bold text-mut-2">
+                {l}
+              </th>
+            ))}
+            <th scope="col" className="px-4 pb-2 text-center font-mono-num text-[10px] font-bold text-mut-2">
+              {sport === "tennis" ? "SETS" : "T"}
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {row("home")}
+          {row("away")}
+        </tbody>
+      </table>
+    </div>
+  )
 }
